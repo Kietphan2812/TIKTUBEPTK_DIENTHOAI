@@ -225,49 +225,76 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ? profile.name
               : (profile.userKey.isNotEmpty ? profile.userKey : 'bạn'));
 
+    final bool isMobile = MediaQuery.sizeOf(context).width < 700;
     return Scaffold(
       backgroundColor: p.bg,
-      body: Column(
-        children: <Widget>[
-          TopBar(
-            searchController: _searchController,
-            onQueryChanged: (String value) {
-              setState(() => _query = value);
-            },
-            onAction: _handleAction,
-          ),
-          Expanded(
-            child: LayoutBuilder(
-              builder: (BuildContext context, BoxConstraints constraints) {
-                final double pad = constraints.maxWidth < 700 ? 12 : 20;
-                final double contentWidth = constraints.maxWidth - pad * 2;
-                final int columns = (contentWidth / 268).floor().clamp(1, 6);
-                const double gap = 16;
-                final double cardWidth =
-                    (contentWidth - gap * (columns - 1)) / columns;
-                final List<Video> videos = _videos;
-                final List<Video> trending = _trending;
+      body: SafeArea(
+        top: true,
+        bottom: false,
+        child: Column(
+          children: <Widget>[
+            TopBar(
+              searchController: _searchController,
+              onQueryChanged: (String value) {
+                setState(() => _query = value);
+              },
+              onAction: _handleAction,
+            ),
+            if (isMobile)
+              _MobileSearchBar(
+                controller: _searchController,
+                onChanged: (String value) {
+                  setState(() => _query = value);
+                },
+                onClear: () {
+                  _searchController.clear();
+                  setState(() => _query = '');
+                },
+              ),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (BuildContext context, BoxConstraints constraints) {
+                  final bool compact = constraints.maxWidth < 700;
+                  final double pad = compact ? 12 : 20;
+                  final double contentWidth = constraints.maxWidth - pad * 2;
+                  final int columns = compact
+                      ? 1
+                      : (contentWidth / 268).floor().clamp(1, 6);
+                  const double gap = 16;
+                  final double cardWidth =
+                      (contentWidth - gap * (columns - 1)) / columns;
+                  final List<Video> videos = _videos;
+                  final List<Video> trending = _trending;
 
-                return Scrollbar(
-                  controller: _scrollController,
-                  child: ListView(
+                  final Widget list = ListView(
                     controller: _scrollController,
-                    padding: EdgeInsets.fromLTRB(pad, 14, pad, 48),
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: EdgeInsets.fromLTRB(
+                      pad,
+                      compact ? 12 : 14,
+                      pad,
+                      compact ? 24 : 48,
+                    ),
                     children: <Widget>[
                       GreetingBar(
                         name: greetingName,
+                        compact: compact,
                         onTap: () => _push(AccountScreen(api: _api)),
                       ),
                       if (!_searching && trending.isNotEmpty) ...<Widget>[
-                        const SizedBox(height: 18),
+                        SizedBox(height: compact ? 14 : 18),
                         _SectionTitle(
                           title: 'Video xu hướng',
-                          subtitle:
-                              'Xếp hạng dựa trên Điểm Xu Hướng trực tiếp.',
+                          subtitle: compact
+                              ? null
+                              : 'Xếp hạng dựa trên Điểm Xu Hướng trực tiếp.',
+                          compact: compact,
                         ),
-                        const SizedBox(height: 12),
+                        SizedBox(height: compact ? 10 : 12),
                         SizedBox(
-                          height: 232,
+                          height: compact ? 206 : 232,
                           child: HorizontalDragScroll(
                             child: ListView.separated(
                               scrollDirection: Axis.horizontal,
@@ -275,29 +302,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               separatorBuilder: (
                                 BuildContext context,
                                 int index,
-                              ) => const SizedBox(width: 14),
+                              ) => SizedBox(width: compact ? 10 : 14),
                               itemBuilder: (BuildContext context, int index) {
                                 final Video video = trending[index];
                                 return TrendingCard(
                                   video: video,
+                                  compact: compact,
                                   onTap: () => _openVideo(video),
                                 );
                               },
                             ),
                           ),
                         ),
-                        const SizedBox(height: 18),
+                        SizedBox(height: compact ? 14 : 18),
                         Divider(color: p.border),
-                        const SizedBox(height: 14),
+                        SizedBox(height: compact ? 12 : 14),
                       ] else
-                        const SizedBox(height: 16),
+                        SizedBox(height: compact ? 12 : 16),
                       CategoryBar(
                         selected: _category,
                         onSelected: (String value) {
                           setState(() => _category = value);
                         },
                       ),
-                      const SizedBox(height: 18),
+                      SizedBox(height: compact ? 14 : 18),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: <Widget>[
@@ -309,9 +337,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               subtitle: _searching
                                   ? '${videos.length} video phù hợp'
                                   : null,
+                              compact: compact,
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 10),
                           _SourceBadge(
                             loading: _loadingVideos,
                             online: _usingSql,
@@ -319,7 +348,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 14),
+                      SizedBox(height: compact ? 10 : 14),
                       if (_loadingVideos && _remoteVideos == null)
                         const DataLoading(message: 'Đang tải video từ Neon...')
                       else if (_error != null && _remoteVideos == null)
@@ -329,35 +358,57 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       else
                         Wrap(
                           spacing: gap,
-                          runSpacing: 22,
+                          runSpacing: compact ? 14 : 22,
                           children: <Widget>[
                             for (final Video video in videos)
                               SizedBox(
                                 width: cardWidth,
                                 child: VideoCard(
                                   video: video,
+                                  compact: compact,
                                   onTap: () => _openVideo(video),
                                 ),
                               ),
                           ],
                         ),
                     ],
-                  ),
-                );
-              },
+                  );
+
+                  if (!compact) {
+                    return Scrollbar(
+                      controller: _scrollController,
+                      child: list,
+                    );
+                  }
+
+                  return RefreshIndicator(
+                    color: p.brandRed,
+                    onRefresh: _loadVideos,
+                    child: list,
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
+      bottomNavigationBar: isMobile
+          ? _MobileBottomNav(onTap: _handleAction)
+          : null,
     );
   }
 }
 
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.title, this.subtitle});
+  const _SectionTitle({
+    required this.title,
+    this.subtitle,
+    this.compact = false,
+  });
 
   final String title;
   final String? subtitle;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -369,18 +420,21 @@ class _SectionTitle extends StatelessWidget {
         Text(
           title,
           style: TextStyle(
-            fontSize: 22,
+            fontSize: compact ? 19 : 22,
             fontWeight: FontWeight.w800,
-            letterSpacing: -0.4,
+            letterSpacing: compact ? -0.25 : -0.4,
             color: p.textPrimary,
             height: 1.2,
           ),
         ),
         if (subtitle != null) ...<Widget>[
-          const SizedBox(height: 4),
+          SizedBox(height: compact ? 3 : 4),
           Text(
             subtitle!,
-            style: TextStyle(fontSize: 12.5, color: p.textSecondary),
+            style: TextStyle(
+              fontSize: compact ? 11.5 : 12.5,
+              color: p.textSecondary,
+            ),
           ),
         ],
       ],
@@ -458,6 +512,237 @@ class _SourceBadge extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileSearchBar extends StatelessWidget {
+  const _MobileSearchBar({
+    required this.controller,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final bool hasText = controller.text.trim().isNotEmpty;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 2),
+      child: Container(
+        height: 42,
+        decoration: BoxDecoration(
+          color: p.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: p.border),
+        ),
+        child: Row(
+          children: <Widget>[
+            const SizedBox(width: 11),
+            Icon(Icons.search_rounded, size: 20, color: p.textSecondary),
+            const SizedBox(width: 7),
+            Expanded(
+              child: TextField(
+                controller: controller,
+                onChanged: onChanged,
+                onSubmitted: onChanged,
+                textInputAction: TextInputAction.search,
+                cursorColor: p.brandRed,
+                style: TextStyle(fontSize: 13, color: p.textPrimary),
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: 'Tìm video, kênh, danh mục...',
+                  hintStyle: TextStyle(
+                    fontSize: 13,
+                    color: p.textSecondary.withValues(alpha: 0.9),
+                  ),
+                  contentPadding: EdgeInsets.zero,
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                ),
+              ),
+            ),
+            if (hasText)
+              IconButton(
+                onPressed: onClear,
+                tooltip: 'Xoá tìm kiếm',
+                constraints: const BoxConstraints.tightFor(
+                  width: 36,
+                  height: 36,
+                ),
+                padding: EdgeInsets.zero,
+                icon: Icon(
+                  Icons.close_rounded,
+                  size: 18,
+                  color: p.textSecondary,
+                ),
+              )
+            else
+              const SizedBox(width: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileBottomNav extends StatelessWidget {
+  const _MobileBottomNav({required this.onTap});
+
+  final ValueChanged<String> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+
+    return Material(
+      color: p.surface,
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: p.border)),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: p.shadow,
+              blurRadius: 12,
+              offset: const Offset(0, -3),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: 62,
+            child: Row(
+              children: <Widget>[
+                _MobileNavButton(
+                  icon: Icons.home_rounded,
+                  label: 'Trang chủ',
+                  active: true,
+                  onTap: () => onTap('Trang chủ'),
+                ),
+                _MobileNavButton(
+                  icon: Icons.subscriptions_outlined,
+                  label: 'Đăng ký',
+                  onTap: () => onTap('Đăng ký'),
+                ),
+                _MobileUploadButton(onTap: () => onTap('Đăng Video')),
+                _MobileNavButton(
+                  icon: Icons.history_rounded,
+                  label: 'Lịch sử',
+                  onTap: () => onTap('Lịch sử'),
+                ),
+                _MobileNavButton(
+                  icon: Icons.person_outline_rounded,
+                  label: 'Tài khoản',
+                  onTap: () => onTap('Tài khoản'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileNavButton extends StatelessWidget {
+  const _MobileNavButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.active = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final color = active ? p.brandRed : p.textSecondary;
+
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            Icon(icon, size: 22, color: color),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 9.5,
+                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileUploadButton extends StatelessWidget {
+  const _MobileUploadButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(colors: p.ctaGradient),
+                boxShadow: <BoxShadow>[
+                  BoxShadow(
+                    color: p.brandPink.withValues(alpha: 0.28),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.add_rounded,
+                size: 23,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 1),
+            Text(
+              'Đăng',
+              style: TextStyle(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w700,
+                color: p.textPrimary,
+              ),
+            ),
+          ],
         ),
       ),
     );

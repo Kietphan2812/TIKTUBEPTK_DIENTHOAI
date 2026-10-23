@@ -219,6 +219,26 @@ void main() {
     expect(find.text('Tài khoản'), findsOneWidget);
   });
 
+  testWidgets('Trang chủ hiển thị giao diện điện thoại không bị tràn', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      PtkTubeApp(api: _OfflineApi(), authRequired: false),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Video mới'), findsOneWidget);
+    expect(find.text('Trang chủ'), findsOneWidget);
+    expect(find.text('Đăng'), findsOneWidget);
+    expect(find.text('Tài khoản'), findsOneWidget);
+  });
+
   testWidgets('Trang chủ báo lỗi thay vì dùng dữ liệu mẫu khi API offline', (
     WidgetTester tester,
   ) async {

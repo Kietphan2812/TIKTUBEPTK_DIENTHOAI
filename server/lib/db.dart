@@ -1131,7 +1131,7 @@ on conflict (nguoi_dung_id, ngay) do update set
   }
 
   static String? _thumbnailUrl(String? thumbnail, String? videoUrl) {
-    final value = thumbnail?.trim();
+    var value = thumbnail?.trim();
     if (value == null || value.isEmpty) return null;
     if (videoUrl != null && value == videoUrl.trim()) return null;
     final lower = value.toLowerCase();
@@ -1141,6 +1141,13 @@ on conflict (nguoi_dung_id, ngay) do update set
         lower.endsWith('.m3u8')) {
       return null;
     }
+
+    // Ảnh bìa do Cloudinary tạo từ video thường lấy frame 0. Nhiều video bắt
+    // đầu bằng khung trắng/đen nên đổi sang frame 2 giây để card không bị trống.
+    value = value.replaceFirst(
+      '/video/upload/so_0,',
+      '/video/upload/so_2,',
+    );
     return value;
   }
 

@@ -7,10 +7,16 @@ import 'video_thumb.dart';
 
 /// Card lớn cho mục "Video xu hướng".
 class TrendingCard extends StatefulWidget {
-  const TrendingCard({super.key, required this.video, required this.onTap});
+  const TrendingCard({
+    super.key,
+    required this.video,
+    required this.onTap,
+    this.compact = false,
+  });
 
   final Video video;
   final VoidCallback onTap;
+  final bool compact;
 
   @override
   State<TrendingCard> createState() => _TrendingCardState();
@@ -22,6 +28,7 @@ class _TrendingCardState extends State<TrendingCard> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+    final bool compact = widget.compact;
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -31,7 +38,7 @@ class _TrendingCardState extends State<TrendingCard> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          width: 252,
+          width: compact ? 220 : 252,
           decoration: BoxDecoration(
             color: p.surface,
             borderRadius: BorderRadius.circular(10),
@@ -56,15 +63,15 @@ class _TrendingCardState extends State<TrendingCard> {
               VideoThumb(
                 video: widget.video,
                 radius: 0,
-                showControls: widget.video.isPlayable,
+                showControls: compact ? false : widget.video.isPlayable,
               ),
               Padding(
-                padding: const EdgeInsets.all(10),
+                padding: EdgeInsets.all(compact ? 9 : 10),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    ChannelAvatar(video: widget.video, size: 34),
-                    const SizedBox(width: 8),
+                    ChannelAvatar(video: widget.video, size: compact ? 28 : 34),
+                    SizedBox(width: compact ? 7 : 8),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -74,7 +81,7 @@ class _TrendingCardState extends State<TrendingCard> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 13.5,
+                              fontSize: compact ? 12.5 : 13.5,
                               fontWeight: FontWeight.w700,
                               color: p.textPrimary,
                               height: 1.25,
@@ -86,18 +93,18 @@ class _TrendingCardState extends State<TrendingCard> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 11.5,
+                              fontSize: compact ? 10.5 : 11.5,
                               fontWeight: FontWeight.w500,
                               color: p.textSecondary,
                             ),
                           ),
-                          const SizedBox(height: 6),
+                          SizedBox(height: compact ? 4 : 6),
                           Text(
                             '${widget.video.viewsLabel} · ${widget.video.date}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 10.5,
+                              fontSize: compact ? 10 : 10.5,
                               color: p.textSecondary,
                             ),
                           ),

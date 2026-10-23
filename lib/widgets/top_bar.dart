@@ -30,22 +30,21 @@ class TopBar extends StatelessWidget {
       child: LayoutBuilder(
         builder: (BuildContext context, BoxConstraints constraints) {
           final width = constraints.maxWidth;
-          final showSearch = width >= 640;
+          final bool isMobile = width < 700;
+          final showSearch = width >= 700;
           final showCta = width >= 800;
           final showSecondaryNav = width >= 1080;
           final showPrimaryNav = width >= 960;
-          final showLogoText = width >= 430;
+          final showLogoText = width >= 340;
 
           return SizedBox(
-            height: 62,
+            height: isMobile ? 56 : 62,
             child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: width < 700 ? 12 : 18,
-              ),
+              padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 18),
               child: Row(
                 children: <Widget>[
                   TikTubeLogo(showText: showLogoText),
-                  SizedBox(width: width < 700 ? 12 : 20),
+                  SizedBox(width: isMobile ? 10 : 20),
                   if (showSearch)
                     Expanded(
                       child: Align(
@@ -61,7 +60,7 @@ class TopBar extends StatelessWidget {
                     )
                   else
                     const Spacer(),
-                  SizedBox(width: width < 700 ? 6 : 12),
+                  SizedBox(width: isMobile ? 4 : 12),
                   _IconButton(
                     icon: isDark
                         ? Icons.light_mode_outlined
@@ -97,8 +96,11 @@ class TopBar extends StatelessWidget {
                       onTap: () => onAction('Đăng ký'),
                     ),
                   ],
-                  const SizedBox(width: 6),
-                  _AccountPill(onTap: () => onAction('Tài khoản')),
+                  SizedBox(width: isMobile ? 2 : 6),
+                  if (isMobile)
+                    _MobileAccountButton(onTap: () => onAction('Tài khoản'))
+                  else
+                    _AccountPill(onTap: () => onAction('Tài khoản')),
                 ],
               ),
             ),
@@ -291,6 +293,34 @@ class _AccountPill extends StatelessWidget {
           fontWeight: FontWeight.w700,
           color: p.surface,
         ),
+      ),
+    );
+  }
+}
+
+class _MobileAccountButton extends StatelessWidget {
+  const _MobileAccountButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+
+    return _HoverSurface(
+      onTap: onTap,
+      height: 34,
+      width: 34,
+      borderRadius: BorderRadius.circular(999),
+      decoration: BoxDecoration(
+        color: p.chip,
+        shape: BoxShape.circle,
+        border: Border.all(color: p.border),
+      ),
+      child: Icon(
+        Icons.person_outline_rounded,
+        size: 18,
+        color: p.textSecondary,
       ),
     );
   }

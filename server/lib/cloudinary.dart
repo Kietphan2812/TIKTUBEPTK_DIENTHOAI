@@ -52,7 +52,7 @@ class CloudinaryUpload {
     required String publicId,
   }) {
     return 'https://res.cloudinary.com/$cloudName/video/upload/'
-        'so_0,w_640,h_360,c_fill/$publicId.jpg';
+        'so_2,w_640,h_360,c_fill/$publicId.jpg';
   }
 }
 
@@ -139,8 +139,7 @@ class CloudinaryService {
     final request = http.MultipartRequest(
       'POST',
       Uri.parse('https://api.cloudinary.com/v1_1/$cloudName/video/destroy'),
-    )
-      ..fields.addAll(<String, String>{
+    )..fields.addAll(<String, String>{
         ...params,
         'api_key': apiKey,
         'signature': signature,
@@ -178,7 +177,9 @@ class CloudinaryService {
     } catch (_) {
       // Trả về thông báo chung bên dưới.
     }
-    return <String, dynamic>{'error': <String, dynamic>{'message': body}};
+    return <String, dynamic>{
+      'error': <String, dynamic>{'message': body}
+    };
   }
 
   static String _errorMessage(Map<String, dynamic> decoded, String fallback) {

@@ -16,19 +16,22 @@ class CategoryBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool compact = MediaQuery.sizeOf(context).width < 700;
+
     return SizedBox(
-      height: 38,
+      height: compact ? 34 : 38,
       child: HorizontalDragScroll(
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           itemCount: kCategories.length,
           separatorBuilder: (BuildContext context, int index) =>
-              const SizedBox(width: 8),
+              SizedBox(width: compact ? 6 : 8),
           itemBuilder: (BuildContext context, int index) {
             final label = kCategories[index];
             return _CategoryChip(
               label: label,
               selected: label == selected,
+              compact: compact,
               onTap: () => onSelected(label),
             );
           },
@@ -42,11 +45,13 @@ class _CategoryChip extends StatefulWidget {
   const _CategoryChip({
     required this.label,
     required this.selected,
+    required this.compact,
     required this.onTap,
   });
 
   final String label;
   final bool selected;
+  final bool compact;
   final VoidCallback onTap;
 
   @override
@@ -78,18 +83,16 @@ class _CategoryChipState extends State<_CategoryChip> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: EdgeInsets.symmetric(horizontal: widget.compact ? 14 : 16),
           decoration: BoxDecoration(
             color: background,
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: selected ? Colors.transparent : p.border,
-            ),
+            border: Border.all(color: selected ? Colors.transparent : p.border),
           ),
           child: Text(
             widget.label,
             style: TextStyle(
-              fontSize: 12.5,
+              fontSize: widget.compact ? 12 : 12.5,
               fontWeight: FontWeight.w600,
               color: foreground,
             ),
