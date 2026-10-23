@@ -278,11 +278,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       compact ? 24 : 48,
                     ),
                     children: <Widget>[
-                      GreetingBar(
-                        name: greetingName,
-                        compact: compact,
-                        onTap: () => _push(AccountScreen(api: _api)),
-                      ),
+                      if (compact)
+                        GreetingBar(
+                          name: greetingName,
+                          compact: true,
+                          onTap: () => _push(AccountScreen(api: _api)),
+                        ),
                       if (!_searching && trending.isNotEmpty) ...<Widget>[
                         SizedBox(height: compact ? 14 : 18),
                         _SectionTitle(

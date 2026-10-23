@@ -248,7 +248,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Xin chào, kiepthan4'), findsOneWidget);
+    expect(find.text('Xin chào, kiepthan4'), findsNothing);
     expect(find.text('Video xu hướng'), findsOneWidget);
     expect(find.text('Video mới'), findsOneWidget);
     expect(find.text('Tất cả'), findsOneWidget);
@@ -533,7 +533,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('auth-submit')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Xin chào, kiepthan4'), findsOneWidget);
+    expect(find.text('Xin chào, kiepthan4'), findsNothing);
     expect(find.text('Video xu hướng'), findsOneWidget);
 
     await tester.tap(find.text('Tài khoản'));

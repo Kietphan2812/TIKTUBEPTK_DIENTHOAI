@@ -9,7 +9,6 @@ import '../theme/app_theme.dart';
 import '../widgets/app_pill.dart';
 import '../widgets/app_tab_pill.dart';
 import '../widgets/data_state.dart';
-import '../widgets/greeting_bar.dart';
 import '../widgets/mobile_segmented_tabs.dart';
 import '../widgets/section_top_bar.dart';
 import '../widgets/video_thumb.dart';
@@ -222,10 +221,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          if (!compact) ...<Widget>[
-                            GreetingBar(onTap: _openAccount),
-                            const SizedBox(height: 14),
-                          ],
                           if (compact)
                             MobileSegmentedTabs(
                               labels: const <String>['Đã đăng', 'Đã xem'],
