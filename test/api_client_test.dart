@@ -69,6 +69,93 @@ void main() {
     expect(videos.single.viewsLabel, '1,2 N lượt xem');
   });
 
+  test('ApiClient.fetchTrendingVideos gửi bộ lọc và đọc điểm xu hướng', () async {
+    final client = MockClient((http.Request request) async {
+      expect(request.method, 'GET');
+      expect(request.url.path, '/api/videos/trending');
+      expect(request.url.queryParameters['limit'], '8');
+      expect(request.url.queryParameters['days'], '7');
+      expect(request.url.queryParameters['category'], 'Gaming');
+      return http.Response(
+        jsonEncode(<String, Object?>{
+          'items': <Object?>[
+            <String, Object?>{
+              'id': 'trend-1',
+              'title': 'Video đang lên',
+              'channel': 'PTK',
+              'handle': '@ptk',
+              'views': 1200,
+              'date': '23/10/2026',
+              'durationSeconds': 65,
+              'category': 'Gaming',
+              'colors': <String>['#111111', '#222222'],
+              'isLive': false,
+              'trendScore': 812,
+              'recentViews': 4,
+            },
+          ],
+          'windowDays': 7,
+        }),
+        200,
+        headers: <String, String>{
+          'content-type': 'application/json; charset=utf-8',
+        },
+      );
+    });
+
+    final api = ApiClient(client: client, baseUrl: 'http://localhost:8787');
+    final videos = await api.fetchTrendingVideos(
+      limit: 8,
+      days: 7,
+      category: 'Gaming',
+    );
+
+    expect(videos, hasLength(1));
+    expect(videos.single.trendScore, 812);
+    expect(videos.single.recentViews, 4);
+  });
+
+  test('ApiClient.fetchSubscriptionFeed gắn Bearer và đọc feed', () async {
+    final client = MockClient((http.Request request) async {
+      expect(request.method, 'GET');
+      expect(request.url.path, '/api/feed/subscriptions');
+      expect(request.url.queryParameters['limit'], '12');
+      expect(request.headers['authorization'], 'Bearer token-feed');
+      return http.Response(
+        jsonEncode(<String, Object?>{
+          'items': <Object?>[
+            <String, Object?>{
+              'id': 'feed-1',
+              'title': 'Video từ kênh đã đăng ký',
+              'channel': 'PTK',
+              'handle': '@ptk',
+              'views': 42,
+              'date': '23/10/2026',
+              'durationSeconds': 90,
+              'category': 'Giải trí',
+              'colors': <String>['#111111', '#222222'],
+              'isLive': false,
+              'subscribed': true,
+            },
+          ],
+          'count': 1,
+        }),
+        200,
+        headers: <String, String>{
+          'content-type': 'application/json; charset=utf-8',
+        },
+      );
+    });
+
+    final api = ApiClient(client: client, baseUrl: 'http://localhost:8787');
+    api.setAuthToken('token-feed');
+    final videos = await api.fetchSubscriptionFeed(limit: 12);
+
+    expect(videos, hasLength(1));
+    expect(videos.single.title, 'Video từ kênh đã đăng ký');
+    expect(videos.single.subscribed, isTrue);
+  });
+
   test('ApiClient ném ApiException kèm thông báo lỗi của server', () async {
     final client = MockClient((http.Request request) async {
       return http.Response(

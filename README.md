@@ -4,6 +4,9 @@ Bản dựng lại giao diện **TIKTUBE** (trang xem & chia sẻ video của PT
 kèm REST API viết bằng Dart, dùng chung database Neon với web app và lưu video trên
 Cloudinary.
 
+Phiên bản Android đang phát hành: **1.0.5+6** (APK cài trực tiếp, trỏ API
+`https://tiktube-api.onrender.com`).
+
 ## Kiến trúc
 
 ```
@@ -47,6 +50,8 @@ Flutter ── gửi file ──► Dart server ── ký upload ──► Clou
 |---|---|
 | Đăng nhập / Đăng ký | `nguoi_dung` + `app_sessions` — tạo phiên thật |
 | Trang chủ | `video` + `nguoi_dung` + `danh_muc` — video đã duyệt |
+| Video xu hướng | `video`, `luot_thich`, `binh_luan`, `lich_su_xem`, `dang_ky_kenh` — xếp hạng bằng SQL |
+| Video từ kênh đã đăng ký | `video` + `dang_ky_kenh` — chỉ video đã duyệt của kênh đang theo dõi |
 | Xem video | `video`, `binh_luan`, `luot_thich`, `lich_su_xem`, `dang_ky_kenh` |
 | Đăng video | `POST /api/videos/upload` — file đi qua server, lưu Cloudinary, ghi `video` + `lich_su_dang_video` + `kiem_duyet_video` |
 | Đăng ký kênh | `dang_ky_kenh` (kênh chính là `nguoi_dung`) |
@@ -61,6 +66,28 @@ lượt thích và bình luận đều là dữ liệu SQL thật.
 Video bị web từ chối vẫn hiện trong tab **Video đã đăng** của chủ video, kèm nhãn
 **Bị từ chối**; video chờ duyệt có nhãn **Chờ duyệt**. Trang chủ chỉ hiện video
 đã duyệt.
+
+### Cách tính điểm xu hướng
+
+Điểm được tính hoàn toàn trong SQL trên Neon, không dùng dữ liệu mẫu:
+
+```
+score = 100 × (
+    2·ln(1 + tổng lượt xem)
+  + 5·ln(1 + lượt thích)
+  + 7·ln(1 + bình luận)
+  + 9·ln(1 + người xem duy nhất trong kỳ)
+  + 0.8·ln(1 + người đăng ký kênh)
+) / (tuổi_video_ngày + 2)^0.65
+```
+
+- Kỳ xem có thể là **24 giờ**, **7 ngày** hoặc **30 ngày**; số người xem được
+  đếm duy nhất từ `lich_su_xem.thoi_gian_xem`.
+- Hàm `ln` giúp video mới, ít lượt vẫn có cơ hội cạnh tranh; mẫu số làm giảm dần
+  điểm của video cũ.
+- API `GET /api/videos/trending` xếp hạng lại theo điểm, sau đó mới đến ngày
+  đăng. App tự làm mới mỗi 10 giây và có màn hình **Xu hướng** riêng để đổi kỳ
+  xem, lọc danh mục, xem điểm và số người xem gần đây.
 
 ## Chạy dự án
 
@@ -170,6 +197,7 @@ người dùng thật trong Neon và tự động đăng nhập.
 | GET | `/health` | Trạng thái API + Cloudinary |
 | GET | `/api/categories` | Danh mục |
 | GET | `/api/videos?limit=...` | Danh sách video đã duyệt |
+| GET | `/api/videos/trending?days=7&limit=12&category=...` | Bảng xếp hạng xu hướng từ SQL (kèm `trendScore`, `recentViews`) |
 | GET | `/api/videos/<id>` | Chi tiết video |
 | POST | `/api/videos/upload` | Body là bytes video (tối đa 100 MB) + query `title`, `description`, `category`, `tags`, `age`, `filename`; server ký upload Cloudinary |
 | PATCH | `/api/videos/<id>` | Sửa metadata video |
@@ -181,6 +209,7 @@ người dùng thật trong Neon và tự động đăng nhập.
 | POST | `/api/videos/<id>/view` | Ghi lượt xem + lịch sử |
 | GET | `/api/channels` | Kênh |
 | GET | `/api/subscriptions` | Kênh đã đăng ký |
+| GET | `/api/feed/subscriptions?limit=30` | Video mới nhất từ các kênh đã đăng ký (cần Bearer token) |
 | POST/DELETE | `/api/channels/<id>/subscribe` | Đăng ký/huỷ đăng ký |
 | GET | `/api/history` | Lịch sử xem |
 | DELETE | `/api/history` | Xoá toàn bộ lịch sử |
@@ -194,9 +223,10 @@ người dùng thật trong Neon và tự động đăng nhập.
 | PATCH | `/api/me` | Cập nhật tên/email/tuổi |
 
 Các endpoint đọc công khai như `/api/videos`, `/api/categories`,
-`/api/videos/<id>` vẫn xem được khi chưa đăng nhập. Các endpoint ghi (upload,
-bình luận, like, view, đăng ký kênh) và dữ liệu riêng (lịch sử, uploads, stats,
-thông báo, `/api/me`) yêu cầu header:
+`/api/videos/trending`, `/api/videos/<id>` vẫn xem được khi chưa đăng nhập.
+Endpoint `/api/feed/subscriptions`, các endpoint ghi (upload, bình luận, like,
+view, đăng ký kênh) và dữ liệu riêng (lịch sử, uploads, stats, thông báo,
+`/api/me`) yêu cầu header:
 
 ```http
 Authorization: Bearer <token>
@@ -211,7 +241,7 @@ lib/
   auth/            AuthController, AuthScope, lưu phiên localStorage
   data/            ApiClient, TikTubeApi, model parsing
   models/          Video, Channel, Comment, Profile, AuthSession, CreatorStats, ...
-  screens/         auth, home, watch, upload, notifications, subscriptions, history, stats, account
+  screens/         auth, home, trending, watch, upload, notifications, subscriptions, history, stats, account
   widgets/         data_state (loading/error), video_surface (player), ...
 server/
   bin/server.dart          HTTP server
@@ -239,8 +269,9 @@ flutter build web --release
 cd server && dart analyze
 ```
 
-Hiện có 14 test: parse API, đăng nhập + Bearer token, trang chủ, trạng thái lỗi
-API, thống kê, tìm kiếm, responsive, điều hướng, xem video/bình luận và luồng
+Hiện có 24 test: parse API, xu hướng + feed đăng ký, đăng nhập + Bearer token,
+trang chủ, trạng thái lỗi API, thống kê, tìm kiếm, responsive, điều hướng,
+xem video/bình luận, thông báo, upload tiến trình và luồng
 đăng nhập/đăng ký/đăng xuất.
 
 ## Deploy API lên Render

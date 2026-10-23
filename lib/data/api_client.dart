@@ -66,6 +66,25 @@ class ApiClient implements TikTubeApi {
   }
 
   @override
+  Future<List<Video>> fetchTrendingVideos({
+    int limit = 12,
+    int days = 7,
+    String? category,
+  }) async {
+    final String trimmedCategory = category?.trim() ?? '';
+    final data = await _request(
+      'GET',
+      _uri('/api/videos/trending', <String, String>{
+        'limit': '$limit',
+        'days': '$days',
+        if (trimmedCategory.isNotEmpty && trimmedCategory != 'Tất cả')
+          'category': trimmedCategory,
+      }),
+    );
+    return _videoList(data);
+  }
+
+  @override
   Future<List<Comment>> fetchComments(String videoId) async {
     final data = await _request('GET', _uri('/api/videos/$videoId/comments'));
     final items = (data['items'] as List<dynamic>? ?? const <dynamic>[]);
@@ -220,6 +239,15 @@ class ApiClient implements TikTubeApi {
   Future<List<Channel>> fetchSubscriptions() async {
     final data = await _request('GET', _uri('/api/subscriptions'));
     return _channelList(data);
+  }
+
+  @override
+  Future<List<Video>> fetchSubscriptionFeed({int limit = 30}) async {
+    final data = await _request(
+      'GET',
+      _uri('/api/feed/subscriptions', <String, String>{'limit': '$limit'}),
+    );
+    return _videoList(data);
   }
 
   @override

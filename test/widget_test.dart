@@ -22,6 +22,13 @@ class _OfflineApi implements TikTubeApi {
   Future<List<Video>> fetchVideos() async => kLatestVideos;
 
   @override
+  Future<List<Video>> fetchTrendingVideos({
+    int limit = 12,
+    int days = 7,
+    String? category,
+  }) async => kTrendingVideos;
+
+  @override
   Future<List<Comment>> fetchComments(String videoId) async => kSampleComments;
 
   @override
@@ -70,8 +77,11 @@ class _OfflineApi implements TikTubeApi {
   Future<List<Channel>> fetchChannels() async => throw Exception('offline');
 
   @override
-  Future<List<Channel>> fetchSubscriptions() async =>
-      throw Exception('offline');
+  Future<List<Channel>> fetchSubscriptions() async => kSubscribedChannels;
+
+  @override
+  Future<List<Video>> fetchSubscriptionFeed({int limit = 30}) async =>
+      kLatestVideos.take(4).toList();
 
   @override
   Future<int> setSubscription(
@@ -157,6 +167,13 @@ class _OfflineApi implements TikTubeApi {
 class _BrokenApi extends _OfflineApi {
   @override
   Future<List<Video>> fetchVideos() async => throw Exception('offline');
+
+  @override
+  Future<List<Video>> fetchTrendingVideos({
+    int limit = 12,
+    int days = 7,
+    String? category,
+  }) async => throw Exception('offline');
 }
 
 class _BadLoginApi extends _OfflineApi {
@@ -243,6 +260,28 @@ class _MobileDataApi extends _OfflineApi {
       topVideos: kLatestVideos.take(3).toList(),
     );
   }
+}
+
+class _TrendingApi extends _OfflineApi {
+  @override
+  Future<List<Video>> fetchTrendingVideos({
+    int limit = 12,
+    int days = 7,
+    String? category,
+  }) async {
+    final List<Video> videos = kTrendingVideos.take(limit).toList();
+    return <Video>[
+      for (int index = 0; index < videos.length; index++)
+        videos[index].copyWith(
+          trendScore: 1200 - index * 180,
+          recentViews: 5 - index,
+        ),
+    ];
+  }
+
+  @override
+  Future<List<Video>> fetchSubscriptionFeed({int limit = 30}) async =>
+      kLatestVideos.take(3).toList();
 }
 
 class _NotificationApi extends _OfflineApi {
@@ -357,8 +396,13 @@ void main() {
 
     await tester.tap(find.text('Đăng ký'));
     await tester.pumpAndSettle();
-    expect(find.text('Kênh bạn đã đăng ký'), findsOneWidget);
+    expect(find.text('Video mới từ kênh đã đăng ký'), findsOneWidget);
+    expect(find.text('Video mới'), findsOneWidget);
     expect(find.text('Đã đăng ký'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('Đã đăng ký'));
+    await tester.pumpAndSettle();
+    expect(find.text('Kênh bạn đã đăng ký'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.tap(find.byTooltip('Quay lại'));
     await tester.pumpAndSettle();
@@ -430,6 +474,73 @@ void main() {
 
     expect(find.text('1 chưa đọc'), findsNothing);
     expect(find.text('Bạn đã xem hết thông báo'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Bảng xu hướng hiển thị điểm và đổi được khoảng thời gian', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      PtkTubeApp(api: _TrendingApi(), authRequired: false),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Xem tất cả video xu hướng'), findsOneWidget);
+    await tester.tap(find.byTooltip('Xem tất cả video xu hướng'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Video đang thịnh hành'), findsOneWidget);
+    expect(find.text('Khoảng thời gian'), findsOneWidget);
+    expect(find.text('Hôm nay'), findsOneWidget);
+    expect(find.text('7 ngày'), findsOneWidget);
+    expect(find.text('30 ngày'), findsOneWidget);
+    expect(find.textContaining('Điểm xu hướng'), findsWidgets);
+    expect(find.text('Nhạc Mỹ Nhân'), findsWidgets);
+
+    await tester.tap(find.text('Hôm nay'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('24 giờ'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Mục Đăng ký hiển thị video mới từ kênh đã đăng ký', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      PtkTubeApp(api: _OfflineApi(), authRequired: false),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Đăng ký'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Video mới từ kênh đã đăng ký'), findsOneWidget);
+    expect(find.text('Video mới'), findsOneWidget);
+    expect(find.text('Nhạc Ai Là Người Thương Em'), findsWidgets);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.text('Nhạc Ai Là Người Thương Em').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Bình luận'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byTooltip('Quay lại'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Đã đăng ký'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Kênh bạn đã đăng ký'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -554,6 +665,9 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Đăng ký'));
+    await tester.pumpAndSettle();
+    expect(find.text('Video mới từ kênh đã đăng ký'), findsOneWidget);
+    await tester.tap(find.text('KÊNH ĐÃ ĐĂNG KÝ'));
     await tester.pumpAndSettle();
     expect(find.text('Kênh bạn đã đăng ký'), findsOneWidget);
 

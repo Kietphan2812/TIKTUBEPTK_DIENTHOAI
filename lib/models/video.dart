@@ -24,6 +24,8 @@ class Video {
     this.subscribed = false,
     this.uploadedBy = '',
     this.status = 'da_duyet',
+    this.trendScore = 0,
+    this.recentViews = 0,
   });
 
   final String id;
@@ -56,6 +58,12 @@ class Video {
 
   /// Trạng thái kiểm duyệt của web: `da_duyet`, `cho_duyet`, `tu_choi`.
   final String status;
+
+  /// Điểm xếp hạng do API xu hướng tính từ dữ liệu Neon.
+  final int trendScore;
+
+  /// Số người xem duy nhất trong cửa sổ thời gian của bảng xu hướng.
+  final int recentViews;
 
   bool get isApproved => status == 'da_duyet' || status == 'approved';
   bool get isRejected => status == 'tu_choi';
@@ -101,6 +109,8 @@ class Video {
       subscribed: json['subscribed'] as bool? ?? false,
       uploadedBy: json['uploadedBy']?.toString() ?? '',
       status: json['status']?.toString() ?? 'da_duyet',
+      trendScore: (json['trendScore'] as num?)?.toInt() ?? 0,
+      recentViews: (json['recentViews'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -110,6 +120,8 @@ class Video {
     int? commentCount,
     int? subscriberCount,
     bool? subscribed,
+    int? trendScore,
+    int? recentViews,
   }) {
     return Video(
       id: id,
@@ -133,6 +145,8 @@ class Video {
       subscribed: subscribed ?? this.subscribed,
       uploadedBy: uploadedBy,
       status: status,
+      trendScore: trendScore ?? this.trendScore,
+      recentViews: recentViews ?? this.recentViews,
     );
   }
 
@@ -170,6 +184,25 @@ class Video {
     }
     return '$views lượt xem';
   }
+
+  String get recentViewsLabel {
+    if (recentViews <= 0) return 'Chưa có người xem mới';
+    if (recentViews >= 1000000) {
+      final value = (recentViews / 1000000)
+          .toStringAsFixed(1)
+          .replaceAll('.', ',');
+      return '$value Tr người xem gần đây';
+    }
+    if (recentViews >= 1000) {
+      final value = (recentViews / 1000)
+          .toStringAsFixed(1)
+          .replaceAll('.', ',');
+      return '$value N người xem gần đây';
+    }
+    return '$recentViews người xem gần đây';
+  }
+
+  String get trendScoreLabel => '$trendScore điểm';
 
   String get subscriberLabel {
     final count = subscriberCount;

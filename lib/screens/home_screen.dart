@@ -17,6 +17,7 @@ import 'account_screen.dart';
 import 'history_screen.dart';
 import 'notifications_screen.dart';
 import 'subscriptions_screen.dart';
+import 'trending_screen.dart';
 import 'upload_screen.dart';
 import 'watch_screen.dart';
 
@@ -36,11 +37,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   late final TikTubeApi _api;
   List<Video>? _remoteVideos;
+  List<Video> _trendingVideos = const <Video>[];
   bool _loadingVideos = true;
   bool _refreshingVideos = false;
+  bool _loadingTrending = true;
   bool _loadingNotifications = false;
   int _unreadNotifications = 0;
   String? _error;
+  String? _trendingError;
+  int _trendingLoadId = 0;
   Timer? _refreshTimer;
 
   String _query = '';
@@ -52,26 +57,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   List<Video> get _allVideos => _remoteVideos ?? const <Video>[];
 
-  List<Video> get _trending {
-    final remote = _remoteVideos;
-    if (remote == null || remote.isEmpty) return const <Video>[];
-    final ordered = <Video>[
-      ...remote.where((Video video) => video.isLive),
-      ...remote.where((Video video) => !video.isLive),
-    ];
-    return ordered.take(4).toList();
-  }
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _api = widget.api ?? ApiClient();
     _loadVideos();
+    unawaited(_loadTrending());
     unawaited(_loadUnreadNotifications());
     _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       if (!mounted) return;
       if (!_refreshingVideos) unawaited(_loadVideos(silent: true));
+      unawaited(_loadTrending(silent: true));
       unawaited(_loadUnreadNotifications());
     });
   }
@@ -120,6 +117,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// Tải bảng xếp hạng xu hướng từ API. Bảng này được tính riêng bằng SQL
+  /// (lượt xem, tương tác, nhịp xem gần đây và độ mới) nên không phụ thuộc vào
+  /// danh sách "Video mới" đang hiển thị.
+  Future<void> _loadTrending({bool silent = false}) async {
+    final int loadId = ++_trendingLoadId;
+    final String? category = _category == 'Tất cả' ? null : _category;
+    if (!silent) {
+      setState(() {
+        _loadingTrending = true;
+        _trendingError = null;
+      });
+    }
+    try {
+      final List<Video> videos = await _api.fetchTrendingVideos(
+        limit: 8,
+        days: 7,
+        category: category,
+      );
+      if (!mounted || loadId != _trendingLoadId) return;
+      setState(() {
+        _trendingVideos = videos;
+        _loadingTrending = false;
+        _trendingError = null;
+      });
+    } catch (error) {
+      if (!mounted || loadId != _trendingLoadId) return;
+      debugPrint('Không tải được bảng xu hướng từ API Neon: $error');
+      setState(() {
+        _loadingTrending = false;
+        _trendingError = error.toString();
+      });
+    }
+  }
+
   /// Cập nhật số thông báo chưa đọc cho badge trên chuông. Lỗi mạng được bỏ
   /// qua để không làm phiền người dùng khi đang xem feed.
   Future<void> _loadUnreadNotifications() async {
@@ -144,6 +175,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_loadVideos(silent: true));
+      unawaited(_loadTrending(silent: true));
       unawaited(_loadUnreadNotifications());
     }
   }
@@ -199,8 +231,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final bool? result = await Navigator.of(context)
         .push<bool>(MaterialPageRoute<bool>(builder: (_) => screen));
     if (result == true && mounted) {
-      await _loadVideos();
+      await Future.wait<void>(<Future<void>>[_loadVideos(), _loadTrending()]);
     }
+  }
+
+  Future<void> _openTrending() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TrendingScreen(
+          api: _api,
+          initialCategory: _category == 'Tất cả' ? null : _category,
+        ),
+      ),
+    );
+    if (mounted) unawaited(_loadTrending(silent: true));
   }
 
   Future<void> _openNotifications() async {
@@ -294,7 +338,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   final double cardWidth =
                       (contentWidth - gap * (columns - 1)) / columns;
                   final List<Video> videos = _videos;
-                  final List<Video> trending = _trending;
+                  final List<Video> trending = _trendingVideos;
 
                   final Widget list = ListView(
                     controller: _scrollController,
@@ -308,37 +352,92 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       compact ? 24 : 48,
                     ),
                     children: <Widget>[
-                      if (!_searching && trending.isNotEmpty) ...<Widget>[
+                      if (!_searching &&
+                          (_loadingTrending ||
+                              _trendingError != null ||
+                              trending.isNotEmpty)) ...<Widget>[
                         SizedBox(height: compact ? 14 : 18),
-                        _SectionTitle(
-                          title: 'Video xu hướng',
-                          subtitle: compact
-                              ? null
-                              : 'Xếp hạng dựa trên Điểm Xu Hướng trực tiếp.',
-                          compact: compact,
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: <Widget>[
+                            Expanded(
+                              child: _SectionTitle(
+                                title: 'Video xu hướng',
+                                subtitle: 'Điểm xu hướng · 7 ngày',
+                                compact: compact,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Tooltip(
+                              message: 'Xem tất cả video xu hướng',
+                              child: TextButton(
+                                onPressed: _openTrending,
+                                style: TextButton.styleFrom(
+                                  foregroundColor: p.brandRed,
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: compact ? 6 : 10,
+                                    vertical: 6,
+                                  ),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: <Widget>[
+                                    Text(
+                                      compact ? 'Xem bảng' : 'Xem tất cả',
+                                      style: TextStyle(
+                                        fontSize: compact ? 11 : 12,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    Icon(
+                                      Icons.chevron_right_rounded,
+                                      size: compact ? 16 : 18,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         SizedBox(height: compact ? 10 : 12),
-                        SizedBox(
-                          height: compact ? 206 : 232,
-                          child: HorizontalDragScroll(
-                            child: ListView.separated(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: trending.length,
-                              separatorBuilder: (
-                                BuildContext context,
-                                int index,
-                              ) => SizedBox(width: compact ? 10 : 14),
-                              itemBuilder: (BuildContext context, int index) {
-                                final Video video = trending[index];
-                                return TrendingCard(
-                                  video: video,
-                                  compact: compact,
-                                  onTap: () => _openVideo(video),
-                                );
-                              },
+                        if (trending.isNotEmpty)
+                          SizedBox(
+                            height: compact ? 206 : 232,
+                            child: HorizontalDragScroll(
+                              child: ListView.separated(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: trending.length,
+                                separatorBuilder: (
+                                  BuildContext context,
+                                  int index,
+                                ) => SizedBox(width: compact ? 10 : 14),
+                                itemBuilder: (BuildContext context, int index) {
+                                  final Video video = trending[index];
+                                  return TrendingCard(
+                                    video: video,
+                                    rank: index + 1,
+                                    compact: compact,
+                                    onTap: () => _openVideo(video),
+                                  );
+                                },
+                              ),
                             ),
+                          )
+                        else if (_loadingTrending)
+                          _TrendingStatus(
+                            loading: true,
+                            message: 'Đang tính điểm xu hướng từ Neon...',
+                            onRetry: () => unawaited(_loadTrending()),
+                          )
+                        else
+                          _TrendingStatus(
+                            loading: false,
+                            message: 'Chưa tải được bảng xu hướng.',
+                            onRetry: () => unawaited(_loadTrending()),
                           ),
-                        ),
                         SizedBox(height: compact ? 14 : 18),
                         Divider(color: p.border),
                         SizedBox(height: compact ? 12 : 14),
@@ -348,6 +447,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         selected: _category,
                         onSelected: (String value) {
                           setState(() => _category = value);
+                          unawaited(_loadTrending());
                         },
                       ),
                       SizedBox(height: compact ? 14 : 18),
@@ -408,7 +508,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
                   return RefreshIndicator(
                     color: p.brandRed,
-                    onRefresh: _loadVideos,
+                    onRefresh: () async {
+                      await Future.wait<void>(<Future<void>>[
+                        _loadVideos(),
+                        _loadTrending(),
+                      ]);
+                    },
                     child: list,
                   );
                 },
@@ -420,6 +525,69 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       bottomNavigationBar: isMobile
           ? _MobileBottomNav(onTap: _handleAction)
           : null,
+    );
+  }
+}
+
+class _TrendingStatus extends StatelessWidget {
+  const _TrendingStatus({
+    required this.loading,
+    required this.message,
+    required this.onRetry,
+  });
+
+  final bool loading;
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      decoration: BoxDecoration(
+        color: p.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: p.border),
+      ),
+      child: Row(
+        children: <Widget>[
+          if (loading)
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: p.brandRed,
+              ),
+            )
+          else
+            Icon(Icons.trending_up_rounded, size: 18, color: p.textSecondary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(fontSize: 11.5, color: p.textSecondary),
+            ),
+          ),
+          if (!loading)
+            TextButton(
+              onPressed: onRetry,
+              style: TextButton.styleFrom(
+                foregroundColor: p.brandRed,
+                minimumSize: const Size(0, 30),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text(
+                'Tải lại',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

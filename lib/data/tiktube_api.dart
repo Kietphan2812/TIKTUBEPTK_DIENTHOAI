@@ -15,6 +15,13 @@ import '../models/watch_history_item.dart';
 abstract interface class TikTubeApi {
   Future<List<Video>> fetchVideos();
 
+  /// Video được xếp hạng bởi hệ thống xu hướng từ dữ liệu Neon.
+  Future<List<Video>> fetchTrendingVideos({
+    int limit = 12,
+    int days = 7,
+    String? category,
+  });
+
   Future<List<Comment>> fetchComments(String videoId);
 
   Future<Comment> addComment(
@@ -66,6 +73,9 @@ abstract interface class TikTubeApi {
   Future<List<Channel>> fetchChannels();
 
   Future<List<Channel>> fetchSubscriptions();
+
+  /// Video mới nhất từ các kênh người dùng đang đăng ký.
+  Future<List<Video>> fetchSubscriptionFeed({int limit = 30});
 
   /// Trả về số người đăng ký mới của kênh.
   Future<int> setSubscription(String channelId, {required bool subscribed});

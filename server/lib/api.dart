@@ -44,6 +44,8 @@ Handler createApi(Db db, {CloudinaryService? cloudinary}) {
         'GET /health',
         'GET /api/categories',
         'GET /api/videos?category=&q=&limit=',
+        'GET /api/videos/trending?days=&limit=&category=',
+        'GET /api/feed/subscriptions',
         'GET /api/videos/<id>',
         'POST /api/videos/upload',
         'PATCH /api/videos/<id>',
@@ -195,6 +197,37 @@ Handler createApi(Db db, {CloudinaryService? cloudinary}) {
       userKey: userKey,
     );
     return _json(<String, Object?>{'items': videos, 'count': videos.length});
+  });
+
+  router.get('/api/videos/trending', (Request request) async {
+    final params = request.url.queryParameters;
+    final int limit = (int.tryParse(params['limit'] ?? '') ?? 12)
+        .clamp(1, 50)
+        .toInt();
+    final int days = (int.tryParse(params['days'] ?? '') ?? 7)
+        .clamp(1, 90)
+        .toInt();
+    final userKey = await _optionalUserKey(db, request) ?? '';
+    final videos = await db.listTrendingVideos(
+      days: days,
+      limit: limit,
+      category: params['category'],
+      userKey: userKey,
+    );
+    return _json(<String, Object?>{
+      'items': videos,
+      'count': videos.length,
+      'windowDays': days,
+      'algorithm': 'tiktube_trending_v1',
+      'signals': const <String>[
+        'views',
+        'likes',
+        'comments',
+        'recentViewers',
+        'subscribers',
+        'freshness',
+      ],
+    });
   });
 
   router.post('/api/videos/upload', (Request request) async {
@@ -434,6 +467,19 @@ Handler createApi(Db db, {CloudinaryService? cloudinary}) {
       onlySubscribed: true,
     );
     return _json(<String, Object?>{'items': channels});
+  });
+
+  router.get('/api/feed/subscriptions', (Request request) async {
+    final session = await _requireSession(db, request);
+    final params = request.url.queryParameters;
+    final int limit = (int.tryParse(params['limit'] ?? '') ?? 30)
+        .clamp(1, 100)
+        .toInt();
+    final videos = await db.listSubscriptionFeed(
+      userKey: session['userKey'] as String,
+      limit: limit,
+    );
+    return _json(<String, Object?>{'items': videos, 'count': videos.length});
   });
 
   router.post(

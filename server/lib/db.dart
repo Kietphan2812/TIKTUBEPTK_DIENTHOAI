@@ -264,6 +264,95 @@ limit @limit
     return result.map(_videoFromRow).toList();
   }
 
+  /// Xếp hạng video thịnh hành bằng tín hiệu thật từ Neon.
+  ///
+  /// Điểm xu hướng kết hợp lượt xem trọn đời, lượt thích, bình luận, số người
+  /// xem duy nhất trong [days] ngày gần nhất, quy mô kênh và độ mới của video.
+  /// Các tín hiệu được log hoá để video có ít lượt xem vẫn có cơ hội xuất hiện,
+  /// sau đó chia cho hệ số suy giảm theo tuổi video.
+  Future<List<Map<String, Object?>>> listTrendingVideos({
+    int days = 7,
+    int limit = 12,
+    String? category,
+    String userKey = '',
+  }) async {
+    final currentUserId = await _userIdForKey(userKey);
+    final int windowDays = days.clamp(1, 90).toInt();
+    final params = <String, Object?>{
+      'limit': limit.clamp(1, 50).toInt(),
+      'days': windowDays,
+      'currentUserId': currentUserId,
+    };
+    final filters = <String>["v.trang_thai in ('da_duyet', 'approved')"];
+    if (category != null &&
+        category.trim().isNotEmpty &&
+        category.trim() != 'Tất cả') {
+      filters.add('dm.ten_danh_muc = @category');
+      params['category'] = category.trim();
+    }
+
+    final result = await _pool.execute(
+      Sql.named('''
+with metrics as (
+  select
+    v.video_id,
+    greatest(coalesce(v.luot_xem, 0), 0)::numeric as total_views,
+    (
+      select count(*)::int
+      from luot_thich lt
+      where lt.video_id = v.video_id
+    )::numeric as like_count,
+    (
+      select count(*)::int
+      from binh_luan bl
+      where bl.video_id = v.video_id
+    )::numeric as comment_count,
+    (
+      select count(distinct lx.nguoi_dung_id)::int
+      from lich_su_xem lx
+      where lx.video_id = v.video_id
+        and lx.thoi_gian_xem >= now() - make_interval(days => @days::int)
+    )::numeric as recent_view_count,
+    (
+      select count(*)::int
+      from dang_ky_kenh dk
+      where dk.kenh_id = v.nguoi_dung_id
+    )::numeric as channel_subscribers,
+    greatest(
+      extract(epoch from (now() - coalesce(v.ngay_tao, now()))) / 86400.0,
+      0
+    )::numeric as age_days
+  from video v
+  where v.trang_thai in ('da_duyet', 'approved')
+)
+select $_videoSelect,
+       greatest(
+         0,
+         round(
+           100.0 * (
+             ln(1.0 + m.total_views) * 2.0
+             + ln(1.0 + m.like_count) * 5.0
+             + ln(1.0 + m.comment_count) * 7.0
+             + ln(1.0 + m.recent_view_count) * 9.0
+             + ln(1.0 + m.channel_subscribers) * 0.8
+           ) / power(m.age_days + 2.0, 0.65)
+         )
+       )::bigint as trend_score,
+       m.recent_view_count::int as recent_views
+from metrics m
+join video v on v.video_id = m.video_id
+join nguoi_dung u on u.nguoi_dung_id = v.nguoi_dung_id
+left join danh_muc dm on dm.danh_muc_id = v.danh_muc_id
+left join the_tag tt on tt.tag_id = v.tag_id
+where ${filters.join(' and ')}
+order by trend_score desc, v.ngay_tao desc nulls last, v.video_id desc
+limit @limit
+'''),
+      parameters: params,
+    );
+    return result.map(_trendingVideoFromRow).toList();
+  }
+
   Future<Map<String, Object?>?> findVideo(
     String id, {
     String userKey = '',
@@ -543,6 +632,36 @@ values (@actorId, @videoId, now())
   // ---------------------------------------------------------------------------
   // Kênh / đăng ký
   // ---------------------------------------------------------------------------
+
+  /// Video mới nhất từ những kênh mà người dùng đang đăng ký.
+  Future<List<Map<String, Object?>>> listSubscriptionFeed({
+    required String userKey,
+    int limit = 30,
+  }) async {
+    final currentUserId = await _userIdForKey(userKey);
+    if (currentUserId == null) return const <Map<String, Object?>>[];
+
+    final result = await _pool.execute(
+      Sql.named('''
+select $_videoSelect
+from video v
+join nguoi_dung u on u.nguoi_dung_id = v.nguoi_dung_id
+left join danh_muc dm on dm.danh_muc_id = v.danh_muc_id
+left join the_tag tt on tt.tag_id = v.tag_id
+join dang_ky_kenh dk
+  on dk.kenh_id = v.nguoi_dung_id
+ and dk.nguoi_dung_id = @currentUserId
+where v.trang_thai in ('da_duyet', 'approved')
+order by v.ngay_tao desc nulls last, v.video_id desc
+limit @limit
+'''),
+      parameters: {
+        'currentUserId': currentUserId,
+        'limit': limit.clamp(1, 100).toInt(),
+      },
+    );
+    return result.map(_videoFromRow).toList();
+  }
 
   Future<List<Map<String, Object?>>> listChannels({
     required String userKey,
@@ -1218,6 +1337,14 @@ on conflict (nguoi_dung_id, ngay) do update set
         'comments': comments,
       },
     );
+  }
+
+  static Map<String, Object?> _trendingVideoFromRow(ResultRow row) {
+    final video = _videoFromRow(row);
+    // Hai cột cuối chỉ xuất hiện trong truy vấn xếp hạng xu hướng.
+    video['trendScore'] = _asInt(row[17]) ?? 0;
+    video['recentViews'] = _asInt(row[18]) ?? 0;
+    return video;
   }
 
   static Map<String, Object?> _videoFromRow(ResultRow row) {
