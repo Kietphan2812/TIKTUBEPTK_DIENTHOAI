@@ -27,7 +27,8 @@ class ApiClient implements TikTubeApi {
               ),
         );
 
-  static const Duration _timeout = Duration(seconds: 25);
+  // Render Free có thể mất ~50 giây để đánh thức instance sau thời gian idle.
+  static const Duration _timeout = Duration(seconds: 90);
   static const Duration _uploadTimeout = Duration(minutes: 5);
 
   final http.Client _client;
