@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_app_ptk/data/api_client.dart';
@@ -204,5 +205,59 @@ void main() {
     await api.markNotificationRead('7');
     expect(markedAll, isTrue);
     expect(markedOne, '7');
+  });
+
+  test('ApiClient.uploadVideo gửi bytes dạng stream và báo tiến độ', () async {
+    final bytes = Uint8List.fromList(
+      List<int>.generate(300000, (int index) => index % 256),
+    );
+    final progress = <double>[];
+    final client = MockClient((http.Request request) async {
+      expect(request.method, 'POST');
+      expect(request.url.path, '/api/videos/upload');
+      expect(request.url.queryParameters['title'], 'Video test');
+      expect(request.headers['content-type'], 'application/octet-stream');
+      expect(request.headers['authorization'], 'Bearer token-abc');
+      expect(request.bodyBytes, bytes);
+
+      return http.Response(
+        jsonEncode(<String, Object?>{
+          'video': <String, Object?>{
+            'id': 'video-test',
+            'title': 'Video test',
+            'channel': 'PTK',
+            'handle': '@ptk',
+            'views': 0,
+            'date': '23/10/2026',
+            'durationSeconds': 1,
+            'category': 'Âm nhạc & sáng tạo',
+            'colors': <String>['#111111', '#222222'],
+            'isLive': false,
+          },
+        }),
+        201,
+        headers: <String, String>{
+          'content-type': 'application/json; charset=utf-8',
+        },
+      );
+    });
+
+    final api = ApiClient(client: client, baseUrl: 'http://localhost:8787');
+    api.setAuthToken('token-abc');
+    final video = await api.uploadVideo(
+      title: 'Video test',
+      description: 'Mo ta',
+      category: 'Âm nhạc & sáng tạo',
+      tags: const <String>['test'],
+      kidsOnly: true,
+      bytes: bytes,
+      filename: 'test.mp4',
+      onProgress: progress.add,
+    );
+
+    expect(video.title, 'Video test');
+    expect(progress.first, 0);
+    expect(progress.last, 1.0);
+    expect(progress.length, greaterThan(1));
   });
 }
