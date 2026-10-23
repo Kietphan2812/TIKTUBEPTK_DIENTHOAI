@@ -187,13 +187,16 @@ người dùng thật trong Neon và tự động đăng nhập.
 | DELETE | `/api/history/<videoId>` | Xoá một mục lịch sử |
 | GET | `/api/uploads` | Video đã đăng (kèm trạng thái duyệt) |
 | GET | `/api/stats` | Thống kê người sáng tạo |
+| GET | `/api/notifications` | Thông báo của tài khoản (dùng chung bảng `thong_bao` với web) |
+| POST | `/api/notifications/read` | Đánh dấu tất cả thông báo đã đọc |
+| POST | `/api/notifications/<id>/read` | Đánh dấu một thông báo đã đọc |
 | GET | `/api/me` | Hồ sơ |
 | PATCH | `/api/me` | Cập nhật tên/email/tuổi |
 
 Các endpoint đọc công khai như `/api/videos`, `/api/categories`,
 `/api/videos/<id>` vẫn xem được khi chưa đăng nhập. Các endpoint ghi (upload,
 bình luận, like, view, đăng ký kênh) và dữ liệu riêng (lịch sử, uploads, stats,
-`/api/me`) yêu cầu header:
+thông báo, `/api/me`) yêu cầu header:
 
 ```http
 Authorization: Bearer <token>
@@ -208,7 +211,7 @@ lib/
   auth/            AuthController, AuthScope, lưu phiên localStorage
   data/            ApiClient, TikTubeApi, model parsing
   models/          Video, Channel, Comment, Profile, AuthSession, CreatorStats, ...
-  screens/         auth, home, watch, upload, subscriptions, history, stats, account
+  screens/         auth, home, watch, upload, notifications, subscriptions, history, stats, account
   widgets/         data_state (loading/error), video_surface (player), ...
 server/
   bin/server.dart          HTTP server

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -47,6 +48,10 @@ class _UploadScreenState extends State<UploadScreen> {
   PlatformFile? _file;
   Uint8List? _bytes;
   bool _uploading = false;
+  bool _uploadComplete = false;
+  double _uploadProgress = 0;
+  final Stopwatch _uploadWatch = Stopwatch();
+  Timer? _uploadTicker;
 
   @override
   void initState() {
@@ -61,6 +66,8 @@ class _UploadScreenState extends State<UploadScreen> {
 
   @override
   void dispose() {
+    _uploadTicker?.cancel();
+    _uploadWatch.stop();
     _title.removeListener(_onTitleChanged);
     _title.dispose();
     _description.dispose();
@@ -104,6 +111,8 @@ class _UploadScreenState extends State<UploadScreen> {
       setState(() {
         _file = file;
         _bytes = bytes;
+        _uploadProgress = 0;
+        _uploadComplete = false;
       });
     } catch (error) {
       _notify('Không mở được trình chọn tệp: $error');
@@ -121,7 +130,19 @@ class _UploadScreenState extends State<UploadScreen> {
       return;
     }
 
-    setState(() => _uploading = true);
+    setState(() {
+      _uploading = true;
+      _uploadComplete = false;
+      _uploadProgress = 0;
+    });
+    _uploadWatch
+      ..reset()
+      ..start();
+    _uploadTicker?.cancel();
+    _uploadTicker = Timer.periodic(const Duration(milliseconds: 300), (_) {
+      if (mounted && _uploading) setState(() {});
+    });
+
     try {
       final video = await _api.uploadVideo(
         title: _title.text.trim(),
@@ -131,19 +152,86 @@ class _UploadScreenState extends State<UploadScreen> {
         kidsOnly: _kidsOnly,
         bytes: _bytes!,
         filename: _file!.name,
+        onProgress: (double progress) {
+          if (!mounted) return;
+          setState(() {
+            _uploadProgress = progress < 0 ? 0 : (progress > 1 ? 1 : progress);
+          });
+        },
       );
+      if (!mounted) return;
+      setState(() {
+        _uploadProgress = 1;
+        _uploadComplete = true;
+      });
+      // Giữ thanh tiến trình ở 100% một nhịp để người dùng thấy đã xong.
+      await Future<void>.delayed(const Duration(milliseconds: 900));
       if (!mounted) return;
       _notify('Đã đăng video “${video.title}” lên Cloudinary + Neon.');
       Navigator.of(context).pop(true);
     } on ApiException catch (error) {
       if (!mounted) return;
+      setState(() {
+        _uploading = false;
+        _uploadComplete = false;
+        _uploadProgress = 0;
+      });
       _notify(error.message);
     } catch (error) {
       if (!mounted) return;
+      setState(() {
+        _uploading = false;
+        _uploadComplete = false;
+        _uploadProgress = 0;
+      });
       _notify('Tải video thất bại: $error');
     } finally {
-      if (mounted) setState(() => _uploading = false);
+      _uploadTicker?.cancel();
+      _uploadTicker = null;
+      _uploadWatch.stop();
+      if (mounted && !_uploadComplete) {
+        setState(() => _uploading = false);
+      }
     }
+  }
+
+  String get _uploadStatus {
+    if (_uploadComplete) return 'Đăng video thành công';
+    if (_uploadProgress >= 1) return 'Đang xử lý trên Cloudinary...';
+    return 'Đang tải video lên Cloudinary...';
+  }
+
+  String get _uploadSpeedLabel {
+    if (_uploadProgress <= 0 || !_uploading) return 'Đang kết nối...';
+    final double seconds = _uploadWatch.elapsedMilliseconds / 1000;
+    if (seconds < 0.3) return 'Đang tính...';
+    final int uploaded = ((_bytes?.length ?? 0) * _uploadProgress).round();
+    final double bytesPerSecond = uploaded / seconds;
+    if (bytesPerSecond >= 1024 * 1024) {
+      final String value = (bytesPerSecond / (1024 * 1024))
+          .toStringAsFixed(1)
+          .replaceAll('.', ',');
+      return '$value MB/s';
+    }
+    if (bytesPerSecond >= 1024) {
+      return '${(bytesPerSecond / 1024).toStringAsFixed(0)} KB/s';
+    }
+    return '${bytesPerSecond.toStringAsFixed(0)} B/s';
+  }
+
+  String get _uploadRemainingLabel {
+    if (_uploadComplete) return 'Hoàn tất';
+    if (_uploadProgress >= 1) return 'Chờ máy chủ phản hồi';
+    final double seconds = _uploadWatch.elapsedMilliseconds / 1000;
+    final int total = _bytes?.length ?? 0;
+    final int uploaded = (total * _uploadProgress).round();
+    if (uploaded <= 0 || seconds < 0.3 || total <= uploaded) {
+      return 'Đang tính...';
+    }
+    final double speed = uploaded / seconds;
+    final int secondsLeft = ((total - uploaded) / speed).ceil();
+    return 'Còn lại ${secondsLeft ~/ 60}:'
+        '${(secondsLeft % 60).toString().padLeft(2, '0')}';
   }
 
   String get _fileSizeLabel {
@@ -220,6 +308,11 @@ class _UploadScreenState extends State<UploadScreen> {
                               fileName: _file?.name,
                               fileSizeLabel: _fileSizeLabel,
                               uploading: _uploading,
+                              uploadProgress: _uploadProgress,
+                              uploadStatus: _uploadStatus,
+                              uploadSpeedLabel: _uploadSpeedLabel,
+                              uploadRemainingLabel: _uploadRemainingLabel,
+                              uploadComplete: _uploadComplete,
                               onPick: _pickVideo,
                               onCategory: (String value) =>
                                   setState(() => _category = value),
@@ -289,6 +382,11 @@ class _UploadForm extends StatelessWidget {
     required this.fileName,
     required this.fileSizeLabel,
     required this.uploading,
+    required this.uploadProgress,
+    required this.uploadStatus,
+    required this.uploadSpeedLabel,
+    required this.uploadRemainingLabel,
+    required this.uploadComplete,
     required this.onPick,
     required this.onCategory,
     required this.onKids,
@@ -310,6 +408,11 @@ class _UploadForm extends StatelessWidget {
   final String? fileName;
   final String fileSizeLabel;
   final bool uploading;
+  final double uploadProgress;
+  final String uploadStatus;
+  final String uploadSpeedLabel;
+  final String uploadRemainingLabel;
+  final bool uploadComplete;
   final VoidCallback onPick;
   final ValueChanged<String> onCategory;
   final ValueChanged<bool> onKids;
@@ -421,7 +524,20 @@ class _UploadForm extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 18),
+          if (compact) ...<Widget>[
+            const SizedBox(height: 16),
+            _MobileVideoPreview(
+              title: titleController.text.trim(),
+              fileName: fileName,
+              uploading: uploading,
+            ),
+          ],
+          const SizedBox(height: 20),
+          const _FormSectionHeader(
+            title: 'Thông tin video',
+            subtitle: 'Tiêu đề, danh mục, mô tả và thẻ tag',
+          ),
+          const SizedBox(height: 14),
           const _Label('Tiêu đề'),
           _TextField(
             controller: titleController,
@@ -474,6 +590,7 @@ class _UploadForm extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
+          const _Label('Thẻ tag'),
           Wrap(
             spacing: 6,
             runSpacing: 6,
@@ -509,7 +626,12 @@ class _UploadForm extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
+          const _FormSectionHeader(
+            title: 'Cài đặt video',
+            subtitle: 'Ảnh bìa và đối tượng người xem',
+          ),
+          const SizedBox(height: 14),
           Row(
             children: <Widget>[
               Expanded(
@@ -561,6 +683,16 @@ class _UploadForm extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 22),
+          if (uploading || uploadProgress > 0 || uploadComplete) ...<Widget>[
+            _UploadProgressCard(
+              progress: uploadProgress,
+              status: uploadStatus,
+              speedLabel: uploadSpeedLabel,
+              remainingLabel: uploadRemainingLabel,
+              complete: uploadComplete,
+            ),
+            const SizedBox(height: 18),
+          ],
           Row(
             children: <Widget>[
               Expanded(
@@ -605,15 +737,25 @@ class _UploadForm extends StatelessWidget {
                               SizedBox(
                                 width: 14,
                                 height: 14,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: p.surface,
-                                ),
+                                child: uploadComplete
+                                    ? Icon(
+                                        Icons.check_rounded,
+                                        size: 14,
+                                        color: p.surface,
+                                      )
+                                    : CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: p.surface,
+                                      ),
                               ),
                               const SizedBox(width: 8),
-                              const Text(
-                                'Đang đăng...',
-                                style: TextStyle(
+                              Text(
+                                uploadComplete
+                                    ? 'Đã đăng'
+                                    : uploadProgress >= 1
+                                    ? 'Đang xử lý...'
+                                    : '${(uploadProgress * 100).round()}%',
+                                style: const TextStyle(
                                   fontSize: 12.5,
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -621,7 +763,7 @@ class _UploadForm extends StatelessWidget {
                             ],
                           )
                         : const Text(
-                            'Đăng',
+                            'Đăng video',
                             style: TextStyle(
                               fontSize: 12.5,
                               fontWeight: FontWeight.w700,
@@ -663,6 +805,346 @@ class _UploadForm extends StatelessWidget {
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
         borderSide: BorderSide(color: p.textSecondary),
+      ),
+    );
+  }
+}
+
+class _FormSectionHeader extends StatelessWidget {
+  const _FormSectionHeader({required this.title, this.subtitle});
+
+  final String title;
+  final String? subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Container(
+              width: 3,
+              height: 16,
+              decoration: BoxDecoration(
+                color: p.brandRed,
+                borderRadius: BorderRadius.circular(99),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w800,
+                color: p.textPrimary,
+              ),
+            ),
+          ],
+        ),
+        if (subtitle != null)
+          Padding(
+            padding: const EdgeInsets.only(left: 11, top: 3),
+            child: Text(
+              subtitle!,
+              style: TextStyle(fontSize: 11, color: p.textSecondary),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Khung xem trước gọn dành cho điện thoại.
+///
+/// Bản desktop dùng mockup điện thoại bên phải form; trên màn hình nhỏ,
+/// mockup đó quá cao và chiếm chỗ nên thay bằng khung 16:9 ngay trong form.
+class _MobileVideoPreview extends StatelessWidget {
+  const _MobileVideoPreview({
+    required this.title,
+    required this.fileName,
+    required this.uploading,
+  });
+
+  final String title;
+  final String? fileName;
+  final bool uploading;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final bool hasFile = fileName != null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Icon(
+              Icons.smart_display_outlined,
+              size: 16,
+              color: p.textSecondary,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              'Xem trước video',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: p.textPrimary,
+              ),
+            ),
+            const Spacer(),
+            if (hasFile)
+              Flexible(
+                child: Text(
+                  fileName!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(fontSize: 10.5, color: p.textSecondary),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: uploading
+                    ? p.brandRed.withValues(alpha: 0.55)
+                    : p.border,
+              ),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: AspectRatio(
+              aspectRatio: 16 / 9,
+              child: Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: <Color>[
+                          Color(0xFF10232C),
+                          Color(0xFF3B2D61),
+                          Color(0xFF080808),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 10,
+                    top: 9,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Text(
+                        'XEM TRƯỚC',
+                        style: TextStyle(
+                          fontSize: 8.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.7,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 22),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Container(
+                            width: 44,
+                            height: 44,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.14),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.22),
+                              ),
+                            ),
+                            child: Icon(
+                              uploading
+                                  ? Icons.cloud_upload_outlined
+                                  : Icons.play_arrow_rounded,
+                              size: 25,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            hasFile
+                                ? (title.isEmpty
+                                      ? 'Tiêu đề video của bạn'
+                                      : title)
+                                : 'Chọn video để xem trước',
+                            maxLines: 2,
+                            textAlign: TextAlign.center,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              height: 1.3,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (hasFile)
+                    Positioned(
+                      left: 10,
+                      right: 10,
+                      bottom: 8,
+                      child: Row(
+                        children: <Widget>[
+                          Icon(
+                            uploading
+                                ? Icons.cloud_upload_rounded
+                                : Icons.movie_outlined,
+                            size: 12,
+                            color: Colors.white54,
+                          ),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: Text(
+                              fileName!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 9.5,
+                                color: Colors.white54,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _UploadProgressCard extends StatelessWidget {
+  const _UploadProgressCard({
+    required this.progress,
+    required this.status,
+    required this.speedLabel,
+    required this.remainingLabel,
+    required this.complete,
+  });
+
+  final double progress;
+  final String status;
+  final String speedLabel;
+  final String remainingLabel;
+  final bool complete;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    const Color success = Color(0xFF2E9E62);
+    final Color accent = complete ? success : p.brandRed;
+    final double value = progress < 0 ? 0 : (progress > 1 ? 1 : progress);
+    final int percent = (value * 100).round();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 11, 12, 10),
+      decoration: BoxDecoration(
+        color: p.surfaceAlt,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: complete ? success.withValues(alpha: 0.4) : p.border,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(
+                complete
+                    ? Icons.check_circle_rounded
+                    : Icons.cloud_upload_outlined,
+                size: 17,
+                color: accent,
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  status,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: p.textPrimary,
+                  ),
+                ),
+              ),
+              Text(
+                '$percent%',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: accent,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 9),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: LinearProgressIndicator(
+              value: value,
+              minHeight: 8,
+              backgroundColor: p.chip,
+              color: accent,
+            ),
+          ),
+          const SizedBox(height: 7),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  complete ? 'Đã lưu vào Neon' : 'Tốc độ: $speedLabel',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 10.5, color: p.textSecondary),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                complete ? 'Hoàn tất' : remainingLabel,
+                style: TextStyle(fontSize: 10.5, color: p.textSecondary),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

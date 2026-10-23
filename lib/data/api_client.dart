@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
+import '../models/app_notification.dart';
 import '../models/auth_session.dart';
 import '../models/channel.dart';
 import '../models/comment.dart';
@@ -18,14 +19,14 @@ import 'tiktube_api.dart';
 /// `flutter run -d chrome --dart-define=API_BASE_URL=http://127.0.0.1:8787`
 class ApiClient implements TikTubeApi {
   ApiClient({http.Client? client, String? baseUrl})
-      : _client = client ?? http.Client(),
-        baseUrl = _normalize(
-          baseUrl ??
-              const String.fromEnvironment(
-                'API_BASE_URL',
-                defaultValue: 'http://127.0.0.1:8787',
-              ),
-        );
+    : _client = client ?? http.Client(),
+      baseUrl = _normalize(
+        baseUrl ??
+            const String.fromEnvironment(
+              'API_BASE_URL',
+              defaultValue: 'http://127.0.0.1:8787',
+            ),
+      );
 
   // Render Free có thể mất ~50 giây để đánh thức instance sau thời gian idle.
   static const Duration _timeout = Duration(seconds: 90);
@@ -66,10 +67,7 @@ class ApiClient implements TikTubeApi {
 
   @override
   Future<List<Comment>> fetchComments(String videoId) async {
-    final data = await _request(
-      'GET',
-      _uri('/api/videos/$videoId/comments'),
-    );
+    final data = await _request('GET', _uri('/api/videos/$videoId/comments'));
     final items = (data['items'] as List<dynamic>? ?? const <dynamic>[]);
     return items
         .map((item) => Comment.fromJson(item as Map<String, dynamic>))
@@ -92,10 +90,7 @@ class ApiClient implements TikTubeApi {
 
   @override
   Future<void> deleteComment(String videoId, String commentId) async {
-    await _request(
-      'DELETE',
-      _uri('/api/videos/$videoId/comments/$commentId'),
-    );
+    await _request('DELETE', _uri('/api/videos/$videoId/comments/$commentId'));
   }
 
   @override
@@ -126,6 +121,7 @@ class ApiClient implements TikTubeApi {
     required bool kidsOnly,
     required Uint8List bytes,
     required String filename,
+    void Function(double progress)? onProgress,
   }) async {
     final uri = _uri('/api/videos/upload', <String, String>{
       'title': title,
@@ -136,17 +132,52 @@ class ApiClient implements TikTubeApi {
       'filename': filename,
     });
 
-    final request = http.Request('POST', uri)
+    // Dùng StreamedRequest thay vì bodyBytes để có thể báo tiến độ theo từng
+    // khối dữ liệu gửi lên server. Server đọc body dạng octet-stream.
+    final request = http.StreamedRequest('POST', uri)
       ..headers.addAll(_authHeaders)
       ..headers['content-type'] = 'application/octet-stream'
-      ..bodyBytes = bytes;
+      ..contentLength = bytes.length;
+
+    final Future<http.StreamedResponse> responseFuture = _client
+        .send(request)
+        .timeout(_uploadTimeout);
+
+    Object? writeError;
+    try {
+      onProgress?.call(0);
+      const int chunkSize = 256 * 1024;
+      for (var offset = 0; offset < bytes.length; offset += chunkSize) {
+        final int end = offset + chunkSize < bytes.length
+            ? offset + chunkSize
+            : bytes.length;
+        request.sink.add(bytes.sublist(offset, end));
+        onProgress?.call(end / bytes.length);
+        // Nhường event loop để client kịp đọc khối vừa ghi.
+        await Future<void>.delayed(Duration.zero);
+      }
+      await request.sink.close();
+    } catch (error) {
+      writeError = error;
+      try {
+        await request.sink.close();
+      } catch (_) {
+        // Kết nối đã đóng; lỗi gốc sẽ được báo bên dưới.
+      }
+    }
 
     http.Response response;
     try {
-      final streamed = await _client.send(request).timeout(_uploadTimeout);
-      response = await http.Response.fromStream(streamed).timeout(_uploadTimeout);
+      final streamed = await responseFuture;
+      response = await http.Response.fromStream(streamed)
+          .timeout(_uploadTimeout);
     } catch (error) {
-      throw ApiException('Không kết nối được API tại $baseUrl: $error');
+      throw ApiException(
+        'Không kết nối được API tại $baseUrl: ${writeError ?? error}',
+      );
+    }
+    if (writeError != null) {
+      throw ApiException('Không kết nối được API tại $baseUrl: $writeError');
     }
 
     final data = _decodeResponse(response);
@@ -208,8 +239,7 @@ class ApiClient implements TikTubeApi {
     final data = await _request('GET', _uri('/api/history'));
     final items = (data['items'] as List<dynamic>? ?? const <dynamic>[]);
     return items
-        .map((item) =>
-            WatchHistoryItem.fromJson(item as Map<String, dynamic>))
+        .map((item) => WatchHistoryItem.fromJson(item as Map<String, dynamic>))
         .toList();
   }
 
@@ -305,6 +335,37 @@ class ApiClient implements TikTubeApi {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Thông báo
+  // ---------------------------------------------------------------------------
+
+  @override
+  Future<List<AppNotification>> fetchNotifications() async {
+    final data = await _request('GET', _uri('/api/notifications'));
+    final items = (data['items'] as List<dynamic>? ?? const <dynamic>[]);
+    return items
+        .map((item) => AppNotification.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<void> markNotificationsRead() async {
+    await _request(
+      'POST',
+      _uri('/api/notifications/read'),
+      body: const <String, Object?>{},
+    );
+  }
+
+  @override
+  Future<void> markNotificationRead(String notificationId) async {
+    await _request(
+      'POST',
+      _uri('/api/notifications/$notificationId/read'),
+      body: const <String, Object?>{},
+    );
+  }
+
   List<Video> _videoList(Map<String, dynamic> data) {
     final items = (data['items'] as List<dynamic>? ?? const <dynamic>[]);
     return items
@@ -349,8 +410,9 @@ class ApiClient implements TikTubeApi {
               .timeout(_timeout);
           break;
         case 'DELETE':
-          response =
-              await _client.delete(uri, headers: headers).timeout(_timeout);
+          response = await _client
+              .delete(uri, headers: headers)
+              .timeout(_timeout);
           break;
         default:
           response = await _client.get(uri, headers: headers).timeout(_timeout);
@@ -374,7 +436,8 @@ class ApiClient implements TikTubeApi {
     }
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      final message = data?['error'] as String? ?? 'HTTP ${response.statusCode}';
+      final message =
+          data?['error'] as String? ?? 'HTTP ${response.statusCode}';
       throw ApiException(message, statusCode: response.statusCode);
     }
     if (data == null) {

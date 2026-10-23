@@ -5,6 +5,7 @@ import 'package:flutter_app_ptk/app.dart';
 import 'package:flutter_app_ptk/auth/auth_session_store_base.dart';
 import 'package:flutter_app_ptk/data/sample_data.dart';
 import 'package:flutter_app_ptk/data/tiktube_api.dart';
+import 'package:flutter_app_ptk/models/app_notification.dart';
 import 'package:flutter_app_ptk/models/auth_session.dart';
 import 'package:flutter_app_ptk/models/channel.dart';
 import 'package:flutter_app_ptk/models/comment.dart';
@@ -50,6 +51,7 @@ class _OfflineApi implements TikTubeApi {
     required bool kidsOnly,
     required Uint8List bytes,
     required String filename,
+    void Function(double progress)? onProgress,
   }) async => throw Exception('offline');
 
   @override
@@ -140,6 +142,16 @@ class _OfflineApi implements TikTubeApi {
 
   @override
   Future<void> logout() async {}
+
+  @override
+  Future<List<AppNotification>> fetchNotifications() async =>
+      const <AppNotification>[];
+
+  @override
+  Future<void> markNotificationsRead() async {}
+
+  @override
+  Future<void> markNotificationRead(String notificationId) async {}
 }
 
 class _BrokenApi extends _OfflineApi {
@@ -193,7 +205,6 @@ class _StatsApi extends _OfflineApi {
 class _MobileDataApi extends _OfflineApi {
   @override
   Future<List<Video>> fetchUploads() async => kLatestVideos.take(3).toList();
-
   @override
   Future<List<WatchHistoryItem>> fetchWatchHistory() async =>
       <WatchHistoryItem>[
@@ -232,6 +243,27 @@ class _MobileDataApi extends _OfflineApi {
       topVideos: kLatestVideos.take(3).toList(),
     );
   }
+}
+
+class _NotificationApi extends _OfflineApi {
+  @override
+  Future<List<AppNotification>> fetchNotifications() async => <AppNotification>[
+    AppNotification(
+      id: '1',
+      content: 'PTK đã thích video của bạn: Nhạc Mỹ Nhân',
+      link: 'video.html?id=2',
+      seen: false,
+      createdAt: DateTime.now()
+          .subtract(const Duration(minutes: 2))
+          .toIso8601String(),
+    ),
+  ];
+
+  @override
+  Future<void> markNotificationsRead() async {}
+
+  @override
+  Future<void> markNotificationRead(String notificationId) async {}
 }
 
 void main() {
@@ -335,6 +367,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Tải video'), findsOneWidget);
     expect(find.text('Chọn video để tải lên'), findsOneWidget);
+    expect(find.text('Xem trước video'), findsOneWidget);
+    expect(find.text('Thông tin video'), findsOneWidget);
+    expect(find.text('Thẻ tag'), findsOneWidget);
+    expect(find.text('Cài đặt video'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Đăng video'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.tap(find.byTooltip('Quay lại'));
     await tester.pumpAndSettle();
@@ -343,6 +380,56 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Bình luận'), findsOneWidget);
     expect(find.text('Video liên quan'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Chuông thông báo mở trung tâm thông báo trên điện thoại', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      PtkTubeApp(api: _OfflineApi(), authRequired: false),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Thông báo'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Tất cả thông báo'), findsOneWidget);
+    expect(find.text('Chưa có thông báo'), findsOneWidget);
+    expect(find.text('Đánh dấu đã đọc'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Thông báo chưa đọc hiện badge và đánh dấu đã đọc được', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      PtkTubeApp(api: _NotificationApi(), authRequired: false),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Thông báo (1 chưa đọc)'), findsOneWidget);
+    await tester.tap(find.byTooltip('Thông báo (1 chưa đọc)'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('1 chưa đọc'), findsOneWidget);
+    expect(find.textContaining('đã thích video của bạn'), findsOneWidget);
+
+    await tester.tap(find.text('Đánh dấu đã đọc'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('1 chưa đọc'), findsNothing);
+    expect(find.text('Bạn đã xem hết thông báo'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

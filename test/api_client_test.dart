@@ -138,4 +138,71 @@ void main() {
     api.setAuthToken(session.token);
     await api.fetchVideos();
   });
+
+  test('ApiClient đọc thông báo và gắn Bearer khi đánh dấu đã đọc', () async {
+    var markedAll = false;
+    var markedOne = '';
+    final client = MockClient((http.Request request) async {
+      expect(request.headers['authorization'], 'Bearer token-abc');
+
+      if (request.url.path == '/api/notifications/7/read') {
+        expect(request.method, 'POST');
+        markedOne = '7';
+        return http.Response(
+          jsonEncode(<String, Object?>{'updated': true}),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json; charset=utf-8',
+          },
+        );
+      }
+      if (request.url.path == '/api/notifications/read') {
+        expect(request.method, 'POST');
+        markedAll = true;
+        return http.Response(
+          jsonEncode(<String, Object?>{'updated': 1}),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json; charset=utf-8',
+          },
+        );
+      }
+
+      expect(request.method, 'GET');
+      expect(request.url.path, '/api/notifications');
+      return http.Response(
+        jsonEncode(<String, Object?>{
+          'items': <Object?>[
+            <String, Object?>{
+              'id': '7',
+              'content': 'PTK đã thích video của bạn: Nhạc Mỹ Nhân',
+              'link': 'video.html?id=2',
+              'seen': false,
+              'createdAt': '2026-10-23T05:41:08.000Z',
+            },
+          ],
+          'unread': 1,
+        }),
+        200,
+        headers: <String, String>{
+          'content-type': 'application/json; charset=utf-8',
+        },
+      );
+    });
+
+    final api = ApiClient(client: client, baseUrl: 'http://localhost:8787');
+    api.setAuthToken('token-abc');
+
+    final items = await api.fetchNotifications();
+    expect(items, hasLength(1));
+    expect(items.single.id, '7');
+    expect(items.single.seen, isFalse);
+    expect(items.single.videoId, '2');
+    expect(items.single.content, contains('đã thích video'));
+
+    await api.markNotificationsRead();
+    await api.markNotificationRead('7');
+    expect(markedAll, isTrue);
+    expect(markedOne, '7');
+  });
 }

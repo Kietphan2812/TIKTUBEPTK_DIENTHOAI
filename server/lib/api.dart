@@ -62,6 +62,9 @@ Handler createApi(Db db, {CloudinaryService? cloudinary}) {
         'DELETE /api/history/<videoId>',
         'GET /api/uploads',
         'GET /api/stats',
+        'GET /api/notifications',
+        'POST /api/notifications/read',
+        'POST /api/notifications/<id>/read',
         'GET /api/me',
         'PATCH /api/me',
       ],
@@ -503,6 +506,44 @@ Handler createApi(Db db, {CloudinaryService? cloudinary}) {
     final session = await _requireSession(db, request);
     final stats = await db.getStats(session['userKey'] as String);
     return _json(stats);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Thông báo (dùng chung bảng thong_bao với web)
+  // ---------------------------------------------------------------------------
+
+  router.get('/api/notifications', (Request request) async {
+    final session = await _requireSession(db, request);
+    final items = await db.listNotifications(
+      userKey: session['userKey'] as String,
+    );
+    return _json(<String, Object?>{
+      'items': items,
+      'unread': items.where((item) => item['seen'] != true).length,
+    });
+  });
+
+  router.post('/api/notifications/read', (Request request) async {
+    final session = await _requireSession(db, request);
+    final updated =
+        await db.markNotificationsRead(session['userKey'] as String);
+    return _json(<String, Object?>{'updated': updated});
+  });
+
+  router.post('/api/notifications/<id>/read', (
+    Request request,
+    String id,
+  ) async {
+    _validateId(id);
+    final session = await _requireSession(db, request);
+    final updated = await db.markNotificationRead(
+      userKey: session['userKey'] as String,
+      notificationId: id,
+    );
+    if (!updated) {
+      throw ApiError(404, 'Không tìm thấy thông báo.');
+    }
+    return _json(<String, Object?>{'updated': true});
   });
 
   router.get('/api/me', (Request request) async {

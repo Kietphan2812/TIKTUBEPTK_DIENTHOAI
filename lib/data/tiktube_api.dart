@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../models/app_notification.dart';
 import '../models/auth_session.dart';
 import '../models/channel.dart';
 import '../models/comment.dart';
@@ -35,6 +36,8 @@ abstract interface class TikTubeApi {
   // ---------------------------------------------------------------------------
 
   /// Tải video lên Cloudinary qua server, sau đó lưu metadata vào Neon.
+  ///
+  /// [onProgress] nhận tiến độ 0..1 của phần dữ liệu đã gửi lên server.
   Future<Video> uploadVideo({
     required String title,
     required String description,
@@ -43,6 +46,7 @@ abstract interface class TikTubeApi {
     required bool kidsOnly,
     required Uint8List bytes,
     required String filename,
+    void Function(double progress)? onProgress,
   });
 
   Future<Video> updateVideo(
@@ -64,10 +68,7 @@ abstract interface class TikTubeApi {
   Future<List<Channel>> fetchSubscriptions();
 
   /// Trả về số người đăng ký mới của kênh.
-  Future<int> setSubscription(
-    String channelId, {
-    required bool subscribed,
-  });
+  Future<int> setSubscription(String channelId, {required bool subscribed});
 
   // ---------------------------------------------------------------------------
   // Xác thực
@@ -76,10 +77,7 @@ abstract interface class TikTubeApi {
   /// Gắn bearer token vào mọi request tiếp theo. Truyền null để xoá token.
   void setAuthToken(String? token);
 
-  Future<AuthSession> login({
-    required String login,
-    required String password,
-  });
+  Future<AuthSession> login({required String login, required String password});
 
   Future<AuthSession> register({
     required String name,
@@ -112,6 +110,19 @@ abstract interface class TikTubeApi {
     required String email,
     int? age,
   });
+
+  // ---------------------------------------------------------------------------
+  // Thông báo (dùng chung dữ liệu với web)
+  // ---------------------------------------------------------------------------
+
+  /// Thông báo mới nhất của tài khoản đang đăng nhập.
+  Future<List<AppNotification>> fetchNotifications();
+
+  /// Đánh dấu tất cả thông báo là đã đọc.
+  Future<void> markNotificationsRead();
+
+  /// Đánh dấu một thông báo là đã đọc.
+  Future<void> markNotificationRead(String notificationId);
 }
 
 class ApiException implements Exception {

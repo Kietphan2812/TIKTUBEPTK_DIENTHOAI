@@ -10,11 +10,15 @@ class TopBar extends StatelessWidget {
     required this.searchController,
     required this.onQueryChanged,
     required this.onAction,
+    this.unreadNotifications = 0,
   });
 
   final TextEditingController searchController;
   final ValueChanged<String> onQueryChanged;
   final ValueChanged<String> onAction;
+
+  /// Số thông báo chưa đọc, hiển thị thành badge trên chuông.
+  final int unreadNotifications;
 
   @override
   Widget build(BuildContext context) {
@@ -74,7 +78,10 @@ class TopBar extends StatelessWidget {
                   ],
                   _IconButton(
                     icon: Icons.notifications_none_rounded,
-                    tooltip: 'Thông báo',
+                    tooltip: unreadNotifications > 0
+                        ? 'Thông báo ($unreadNotifications chưa đọc)'
+                        : 'Thông báo',
+                    badgeCount: unreadNotifications,
                     onTap: () => onAction('Thông báo'),
                   ),
                   if (showPrimaryNav)
@@ -181,15 +188,50 @@ class _IconButton extends StatelessWidget {
     required this.icon,
     required this.tooltip,
     required this.onTap,
+    this.badgeCount = 0,
   });
 
   final IconData icon;
   final String tooltip;
   final VoidCallback onTap;
+  final int badgeCount;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+
+    Widget iconWidget = Icon(icon, size: 19, color: p.textSecondary);
+    if (badgeCount > 0) {
+      iconWidget = Stack(
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          iconWidget,
+          Positioned(
+            right: -7,
+            top: -6,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 15, minHeight: 15),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: p.brandRed,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: p.surface, width: 1.2),
+              ),
+              child: Text(
+                badgeCount > 9 ? '9+' : '$badgeCount',
+                style: const TextStyle(
+                  fontSize: 8.5,
+                  height: 1,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
 
     return Tooltip(
       message: tooltip,
@@ -198,7 +240,7 @@ class _IconButton extends StatelessWidget {
         height: 34,
         width: 34,
         borderRadius: BorderRadius.circular(8),
-        child: Icon(icon, size: 19, color: p.textSecondary),
+        child: iconWidget,
       ),
     );
   }

@@ -330,12 +330,13 @@ order by bl.ngay_tao desc
 
       final video = await tx.execute(
         Sql.named(
-          'select nguoi_dung_id from video where video_id = @videoId',
+          'select nguoi_dung_id, tieu_de from video where video_id = @videoId',
         ),
         parameters: {'videoId': id},
       );
       if (video.isEmpty) return null;
       final ownerId = _asInt(video.first[0]);
+      final videoTitle = video.first[1]?.toString() ?? 'video';
 
       final result = await tx.execute(
         Sql.named('''
@@ -359,6 +360,16 @@ join nguoi_dung u on u.nguoi_dung_id = i.nguoi_dung_id
 
       if (ownerId != null) {
         await _bumpStats(tx, ownerId, comments: 1);
+        if (ownerId != actorId) {
+          final actorName = await _displayNameFor(tx, actorId);
+          await _insertNotification(
+            tx,
+            userId: ownerId,
+            content: '$actorName đã bình luận: "$content" '
+                '(trên video: $videoTitle)',
+            link: 'video.html?id=$id',
+          );
+        }
       }
       return _commentFromRow(result.first, currentUserId: actorId);
     });
@@ -431,11 +442,14 @@ where binh_luan_id = @commentId
       if (actorId == null) return null;
 
       final video = await tx.execute(
-        Sql.named('select nguoi_dung_id from video where video_id = @videoId'),
+        Sql.named(
+          'select nguoi_dung_id, tieu_de from video where video_id = @videoId',
+        ),
         parameters: {'videoId': id},
       );
       if (video.isEmpty) return null;
       final ownerId = _asInt(video.first[0]);
+      final videoTitle = video.first[1]?.toString() ?? 'video';
 
       var delta = 0;
       if (liked) {
@@ -468,6 +482,15 @@ where video_id = @videoId and nguoi_dung_id = @actorId
 
       if (delta != 0 && ownerId != null) {
         await _bumpStats(tx, ownerId, likes: delta);
+        if (delta > 0 && ownerId != actorId) {
+          final actorName = await _displayNameFor(tx, actorId);
+          await _insertNotification(
+            tx,
+            userId: ownerId,
+            content: '$actorName đã thích video của bạn: $videoTitle',
+            link: 'video.html?id=$id',
+          );
+        }
       }
 
       return <String, Object?>{
@@ -583,7 +606,7 @@ order by u.ten_dang_nhap
       if (channel.isEmpty) return null;
 
       if (subscribed) {
-        await tx.execute(
+        final inserted = await tx.execute(
           Sql.named('''
 insert into dang_ky_kenh (nguoi_dung_id, kenh_id)
 values (@actorId, @channelId)
@@ -591,6 +614,15 @@ on conflict (nguoi_dung_id, kenh_id) do nothing
 '''),
           parameters: {'actorId': actorId, 'channelId': targetId},
         );
+        if (inserted.affectedRows > 0 && targetId != actorId) {
+          final actorName = await _displayNameFor(tx, actorId);
+          await _insertNotification(
+            tx,
+            userId: targetId,
+            content: '$actorName đã đăng ký kênh của bạn!',
+            link: 'user.html?id=$actorId',
+          );
+        }
       } else {
         await tx.execute(
           Sql.named('''
@@ -613,6 +645,119 @@ where nguoi_dung_id = @actorId and kenh_id = @channelId
         'subscriberCount': count.first[0],
       };
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Thông báo
+  // ---------------------------------------------------------------------------
+
+  /// Danh sách thông báo mới nhất của người dùng, dùng chung bảng `thong_bao`
+  /// với web để thông báo do web tạo cũng hiện trong app.
+  Future<List<Map<String, Object?>>> listNotifications({
+    required String userKey,
+    int limit = 50,
+  }) async {
+    final currentUserId = await _userIdForKey(userKey);
+    if (currentUserId == null) return const <Map<String, Object?>>[];
+
+    final result = await _pool.execute(
+      Sql.named('''
+select thong_bao_id, noi_dung, link, da_xem, ngay_tao
+from thong_bao
+where nguoi_dung_id = @userId
+order by ngay_tao desc nulls last, thong_bao_id desc
+limit @limit
+'''),
+      parameters: {'userId': currentUserId, 'limit': limit.clamp(1, 100)},
+    );
+
+    return result.map((row) {
+      final createdAt = row[4] as DateTime?;
+      return <String, Object?>{
+        'id': row[0]?.toString() ?? '',
+        'content': row[1]?.toString() ?? '',
+        'link': row[2]?.toString() ?? '',
+        'seen': row[3] as bool? ?? false,
+        'createdAt': createdAt?.toUtc().toIso8601String() ?? '',
+      };
+    }).toList();
+  }
+
+  Future<int> markNotificationsRead(String userKey) async {
+    final currentUserId = await _userIdForKey(userKey);
+    if (currentUserId == null) return 0;
+    final result = await _pool.execute(
+      Sql.named('''
+update thong_bao
+set da_xem = true
+where nguoi_dung_id = @userId and da_xem = false
+'''),
+      parameters: {'userId': currentUserId},
+    );
+    return result.affectedRows;
+  }
+
+  Future<bool> markNotificationRead({
+    required String userKey,
+    required String notificationId,
+  }) async {
+    final currentUserId = await _userIdForKey(userKey);
+    final id = _intId(notificationId);
+    if (currentUserId == null || id == null) return false;
+    final result = await _pool.execute(
+      Sql.named('''
+update thong_bao
+set da_xem = true
+where thong_bao_id = @notificationId and nguoi_dung_id = @userId
+'''),
+      parameters: {'notificationId': id, 'userId': currentUserId},
+    );
+    if (result.affectedRows > 0) return true;
+
+    // Thông báo đã đọc từ trước vẫn được coi là hợp lệ.
+    final exists = await _pool.execute(
+      Sql.named('''
+select 1
+from thong_bao
+where thong_bao_id = @notificationId and nguoi_dung_id = @userId
+'''),
+      parameters: {'notificationId': id, 'userId': currentUserId},
+    );
+    return exists.isNotEmpty;
+  }
+
+  Future<void> _insertNotification(
+    Session session, {
+    required int userId,
+    required String content,
+    String? link,
+  }) async {
+    if (userId <= 0 || content.trim().isEmpty) return;
+    await session.execute(
+      Sql.named('''
+insert into thong_bao (nguoi_dung_id, noi_dung, link, da_xem)
+values (@userId, @content, @link, false)
+'''),
+      parameters: {
+        'userId': userId,
+        'content': content.trim(),
+        'link': link,
+      },
+    );
+  }
+
+  Future<String> _displayNameFor(Session session, int userId) async {
+    final result = await session.execute(
+      Sql.named('''
+select coalesce(nullif(ten_hien_thi, ''), ten_dang_nhap)
+from nguoi_dung
+where nguoi_dung_id = @userId
+'''),
+      parameters: {'userId': userId},
+    );
+    if (result.isEmpty) return 'Người dùng';
+    final name = result.first[0]?.toString().trim() ?? '';
+    return name.isEmpty ? 'Người dùng' : name;
   }
 
   // ---------------------------------------------------------------------------
@@ -788,6 +933,28 @@ where exists (
 '''),
         parameters: {'videoId': id},
       );
+
+      final subscribers = await tx.execute(
+        Sql.named('''
+select nguoi_dung_id
+from dang_ky_kenh
+where kenh_id = @userId and nguoi_dung_id <> @userId
+'''),
+        parameters: {'userId': currentUserId},
+      );
+      if (subscribers.isNotEmpty) {
+        final actorName = await _displayNameFor(tx, currentUserId);
+        for (final row in subscribers) {
+          final recipientId = _asInt(row[0]);
+          if (recipientId == null) continue;
+          await _insertNotification(
+            tx,
+            userId: recipientId,
+            content: '🎬 $actorName vừa đăng video mới: "$title"',
+            link: 'video.html?id=$id',
+          );
+        }
+      }
 
       return id;
     });

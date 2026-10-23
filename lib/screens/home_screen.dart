@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../data/api_client.dart';
 import '../data/tiktube_api.dart';
+import '../models/app_notification.dart';
 import '../models/video.dart';
 import '../theme/app_theme.dart';
 import '../widgets/category_bar.dart';
@@ -14,6 +15,7 @@ import '../widgets/trending_card.dart';
 import '../widgets/video_card.dart';
 import 'account_screen.dart';
 import 'history_screen.dart';
+import 'notifications_screen.dart';
 import 'subscriptions_screen.dart';
 import 'upload_screen.dart';
 import 'watch_screen.dart';
@@ -36,6 +38,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<Video>? _remoteVideos;
   bool _loadingVideos = true;
   bool _refreshingVideos = false;
+  bool _loadingNotifications = false;
+  int _unreadNotifications = 0;
   String? _error;
   Timer? _refreshTimer;
 
@@ -64,9 +68,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _api = widget.api ?? ApiClient();
     _loadVideos();
+    unawaited(_loadUnreadNotifications());
     _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-      if (!mounted || _refreshingVideos) return;
-      unawaited(_loadVideos(silent: true));
+      if (!mounted) return;
+      if (!_refreshingVideos) unawaited(_loadVideos(silent: true));
+      unawaited(_loadUnreadNotifications());
     });
   }
 
@@ -114,10 +120,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// Cập nhật số thông báo chưa đọc cho badge trên chuông. Lỗi mạng được bỏ
+  /// qua để không làm phiền người dùng khi đang xem feed.
+  Future<void> _loadUnreadNotifications() async {
+    if (_loadingNotifications) return;
+    _loadingNotifications = true;
+    try {
+      final List<AppNotification> items = await _api.fetchNotifications();
+      if (!mounted) return;
+      setState(() {
+        _unreadNotifications = items
+            .where((AppNotification item) => !item.seen)
+            .length;
+      });
+    } catch (_) {
+      // Giữ badge cũ nếu API tạm thời không phản hồi.
+    } finally {
+      _loadingNotifications = false;
+    }
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_loadVideos(silent: true));
+      unawaited(_loadUnreadNotifications());
     }
   }
 
@@ -176,8 +203,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _openNotifications() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => NotificationsScreen(api: _api)),
+    );
+    if (mounted) unawaited(_loadUnreadNotifications());
+  }
+
   void _handleAction(String action) {
     switch (action) {
+      case 'Thông báo':
+        unawaited(_openNotifications());
+        return;
       case 'Đăng Video':
         _push(UploadScreen(api: _api));
         return;
@@ -231,6 +268,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 setState(() => _query = value);
               },
               onAction: _handleAction,
+              unreadNotifications: _unreadNotifications,
             ),
             if (isMobile)
               _MobileSearchBar(
