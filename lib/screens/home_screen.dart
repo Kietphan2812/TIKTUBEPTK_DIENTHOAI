@@ -2,14 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../auth/auth_scope.dart';
 import '../data/api_client.dart';
 import '../data/tiktube_api.dart';
 import '../models/video.dart';
 import '../theme/app_theme.dart';
 import '../widgets/category_bar.dart';
 import '../widgets/data_state.dart';
-import '../widgets/greeting_bar.dart';
 import '../widgets/horizontal_drag_scroll.dart';
 import '../widgets/top_bar.dart';
 import '../widgets/trending_card.dart';
@@ -218,12 +216,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final profile = AuthScope.maybeOf(context)?.profile;
-    final String greetingName = profile == null
-        ? 'kiepthan4'
-        : (profile.name.isNotEmpty
-              ? profile.name
-              : (profile.userKey.isNotEmpty ? profile.userKey : 'bạn'));
 
     final bool isMobile = MediaQuery.sizeOf(context).width < 700;
     return Scaffold(
@@ -278,12 +270,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       compact ? 24 : 48,
                     ),
                     children: <Widget>[
-                      if (compact)
-                        GreetingBar(
-                          name: greetingName,
-                          compact: true,
-                          onTap: () => _push(AccountScreen(api: _api)),
-                        ),
                       if (!_searching && trending.isNotEmpty) ...<Widget>[
                         SizedBox(height: compact ? 14 : 18),
                         _SectionTitle(
