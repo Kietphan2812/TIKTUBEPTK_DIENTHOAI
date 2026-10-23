@@ -81,10 +81,7 @@ class _UploadScreenState extends State<UploadScreen> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          duration: const Duration(seconds: 2),
-        ),
+        SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
       );
   }
 
@@ -166,26 +163,27 @@ class _UploadScreenState extends State<UploadScreen> {
       Navigator.of(context).popUntil((Route<dynamic> route) => route.isFirst);
 
   void _openAccount() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => AccountScreen(api: _api)),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => AccountScreen(api: _api)));
   }
 
   void _openStats() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => StatsScreen(api: _api)),
-    );
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (_) => StatsScreen(api: _api)));
   }
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+    final bool compact = MediaQuery.sizeOf(context).width < 700;
 
     return Scaffold(
       backgroundColor: p.bg,
       body: Column(
         children: <Widget>[
           SectionTopBar(
+            title: 'Đăng video',
             onBack: () => Navigator.of(context).maybePop(),
             onHome: _goHome,
             onAccount: _openAccount,
@@ -193,69 +191,80 @@ class _UploadScreenState extends State<UploadScreen> {
             onSearch: _goHome,
           ),
           Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1180),
-                  child: LayoutBuilder(
-                    builder:
-                        (BuildContext context, BoxConstraints constraints) {
-                      final bool wide = constraints.maxWidth >= 880;
+            child: SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  compact ? 14 : 20,
+                  compact ? 14 : 20,
+                  compact ? 14 : 20,
+                  32,
+                ),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1180),
+                    child: LayoutBuilder(
+                      builder:
+                          (BuildContext context, BoxConstraints constraints) {
+                            final bool wide = constraints.maxWidth >= 880;
 
-                      final Widget form = _UploadForm(
-                        titleController: _title,
-                        descriptionController: _description,
-                        hashtagController: _hashtag,
-                        tags: _tags,
-                        category: _category,
-                        kidsOnly: _kidsOnly,
-                        picked: _file != null,
-                        fileName: _file?.name,
-                        fileSizeLabel: _fileSizeLabel,
-                        uploading: _uploading,
-                        onPick: _pickVideo,
-                        onCategory: (String value) =>
-                            setState(() => _category = value),
-                        onKids: (bool value) =>
-                            setState(() => _kidsOnly = value),
-                        onRemoveTag: (String tag) =>
-                            setState(() => _tags.remove(tag)),
-                        onAddTag: _addTag,
-                        onCancel: _uploading
-                            ? null
-                            : () => Navigator.of(context).maybePop(),
-                        onSubmit: _submit,
-                        onCover: () => _notify(
-                          'Ảnh bìa sẽ được Cloudinary tạo tự động từ video.',
-                        ),
-                      );
+                            final Widget form = _UploadForm(
+                              compact: compact,
+                              titleController: _title,
+                              descriptionController: _description,
+                              hashtagController: _hashtag,
+                              tags: _tags,
+                              category: _category,
+                              kidsOnly: _kidsOnly,
+                              picked: _file != null,
+                              fileName: _file?.name,
+                              fileSizeLabel: _fileSizeLabel,
+                              uploading: _uploading,
+                              onPick: _pickVideo,
+                              onCategory: (String value) =>
+                                  setState(() => _category = value),
+                              onKids: (bool value) =>
+                                  setState(() => _kidsOnly = value),
+                              onRemoveTag: (String tag) =>
+                                  setState(() => _tags.remove(tag)),
+                              onAddTag: _addTag,
+                              onCancel: _uploading
+                                  ? null
+                                  : () => Navigator.of(context).maybePop(),
+                              onSubmit: _submit,
+                              onCover: () => _notify(
+                                'Ảnh bìa sẽ được Cloudinary tạo tự động từ video.',
+                              ),
+                            );
 
-                      final Widget preview = _PhonePreview(
-                        title: _title.text.trim(),
-                        fileName: _file?.name,
-                        uploading: _uploading,
-                      );
+                            final Widget preview = _PhonePreview(
+                              title: _title.text.trim(),
+                              fileName: _file?.name,
+                              uploading: _uploading,
+                            );
 
-                      if (!wide) {
-                        return Column(
-                          children: <Widget>[
-                            form,
-                            const SizedBox(height: 24),
-                            preview,
-                          ],
-                        );
-                      }
+                            if (!wide) {
+                              return Column(
+                                children: <Widget>[
+                                  form,
+                                  if (!compact) ...<Widget>[
+                                    const SizedBox(height: 24),
+                                    preview,
+                                  ],
+                                ],
+                              );
+                            }
 
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Expanded(child: form),
-                          const SizedBox(width: 30),
-                          preview,
-                        ],
-                      );
-                    },
+                            return Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Expanded(child: form),
+                                const SizedBox(width: 30),
+                                preview,
+                              ],
+                            );
+                          },
+                    ),
                   ),
                 ),
               ),
@@ -269,6 +278,7 @@ class _UploadScreenState extends State<UploadScreen> {
 
 class _UploadForm extends StatelessWidget {
   const _UploadForm({
+    required this.compact,
     required this.titleController,
     required this.descriptionController,
     required this.hashtagController,
@@ -294,6 +304,7 @@ class _UploadForm extends StatelessWidget {
   final TextEditingController hashtagController;
   final List<String> tags;
   final String category;
+  final bool compact;
   final bool kidsOnly;
   final bool picked;
   final String? fileName;
@@ -313,10 +324,15 @@ class _UploadForm extends StatelessWidget {
     final p = context.palette;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(22, 22, 22, 24),
+      padding: EdgeInsets.fromLTRB(
+        compact ? 16 : 22,
+        compact ? 16 : 22,
+        compact ? 16 : 22,
+        compact ? 18 : 24,
+      ),
       decoration: BoxDecoration(
         color: p.surface,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(compact ? 14 : 10),
         border: Border.all(color: p.border),
       ),
       child: Column(
@@ -325,7 +341,7 @@ class _UploadForm extends StatelessWidget {
           Text(
             'Tải video',
             style: TextStyle(
-              fontSize: 20,
+              fontSize: compact ? 18 : 20,
               fontWeight: FontWeight.w800,
               letterSpacing: -0.3,
               color: p.textPrimary,
@@ -355,22 +371,22 @@ class _UploadForm extends StatelessWidget {
                         uploading
                             ? Icons.cloud_upload_outlined
                             : picked
-                                ? Icons.check_circle_outline_rounded
-                                : Icons.photo_size_select_actual_outlined,
+                            ? Icons.check_circle_outline_rounded
+                            : Icons.photo_size_select_actual_outlined,
                         size: 34,
                         color: uploading
                             ? p.brandRed
                             : picked
-                                ? const Color(0xFF2E9E62)
-                                : p.textSecondary,
+                            ? const Color(0xFF2E9E62)
+                            : p.textSecondary,
                       ),
                       const SizedBox(height: 10),
                       Text(
                         uploading
                             ? 'Đang tải video lên Cloudinary...'
                             : picked
-                                ? (fileName ?? 'video.mp4')
-                                : 'Chọn video để tải lên',
+                            ? (fileName ?? 'video.mp4')
+                            : 'Chọn video để tải lên',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -384,8 +400,8 @@ class _UploadForm extends StatelessWidget {
                         uploading
                             ? 'Vui lòng giữ trang mở trong khi tải lên.'
                             : picked
-                                ? 'Đã chọn · $fileSizeLabel · Nhấn để đổi tập tin'
-                                : 'Hoặc kéo và thả tập tin',
+                            ? 'Đã chọn · $fileSizeLabel · Nhấn để đổi tập tin'
+                            : 'Hoặc kéo và thả tập tin',
                         style: TextStyle(
                           fontSize: 11.5,
                           color: p.textSecondary,
@@ -436,10 +452,7 @@ class _UploadForm extends StatelessWidget {
                 items: <DropdownMenuItem<String>>[
                   for (final String item in kCategories)
                     if (item != 'Tất cả')
-                      DropdownMenuItem<String>(
-                        value: item,
-                        child: Text(item),
-                      ),
+                      DropdownMenuItem<String>(value: item, child: Text(item)),
                 ],
                 onChanged: (String? value) {
                   if (value != null) onCategory(value);
@@ -466,10 +479,7 @@ class _UploadForm extends StatelessWidget {
             runSpacing: 6,
             children: <Widget>[
               for (final String tag in tags)
-                _HashtagChip(
-                  label: tag,
-                  onRemove: () => onRemoveTag(tag),
-                ),
+                _HashtagChip(label: tag, onRemove: () => onRemoveTag(tag)),
             ],
           ),
           const SizedBox(height: 10),
@@ -534,14 +544,15 @@ class _UploadForm extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Row(
+          Wrap(
+            spacing: 22,
+            runSpacing: 10,
             children: <Widget>[
               _AgeOption(
                 label: 'Video cho trẻ em',
                 selected: kidsOnly,
                 onTap: () => onKids(true),
               ),
-              const SizedBox(width: 22),
               _AgeOption(
                 label: 'Video trên 18 tuổi',
                 selected: !kidsOnly,
@@ -811,10 +822,7 @@ class _AgeOption extends StatelessWidget {
                   : null,
             ),
             const SizedBox(width: 7),
-            Text(
-              label,
-              style: TextStyle(fontSize: 11.5, color: p.textPrimary),
-            ),
+            Text(label, style: TextStyle(fontSize: 11.5, color: p.textPrimary)),
           ],
         ),
       ),
@@ -918,8 +926,7 @@ class _PhonePreview extends StatelessWidget {
                           ),
                           const SizedBox(height: 10),
                           Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 16),
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
                             child: Text(
                               title.isEmpty ? 'Tiêu đề video' : title,
                               maxLines: 2,

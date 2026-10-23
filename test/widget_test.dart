@@ -96,23 +96,18 @@ class _OfflineApi implements TikTubeApi {
 
   @override
   Future<Profile> fetchProfile() async => const Profile(
-        userKey: 'kiepthan4',
-        name: 'kiepthan4',
-        email: 'kiepthan4444@gmail.com',
-        age: 18,
-      );
+    userKey: 'kiepthan4',
+    name: 'kiepthan4',
+    email: 'kiepthan4444@gmail.com',
+    age: 18,
+  );
 
   @override
   Future<Profile> updateProfile({
     required String name,
     required String email,
     int? age,
-  }) async => Profile(
-        userKey: 'kiepthan4',
-        name: name,
-        email: email,
-        age: age,
-      );
+  }) async => Profile(userKey: 'kiepthan4', name: name, email: email, age: age);
 
   @override
   void setAuthToken(String? token) {}
@@ -122,14 +117,14 @@ class _OfflineApi implements TikTubeApi {
     required String login,
     required String password,
   }) async => const AuthSession(
-        token: 'test-token',
-        profile: Profile(
-          userKey: 'kiepthan4',
-          name: 'kiepthan4',
-          email: 'kiepthan4444@gmail.com',
-          age: 18,
-        ),
-      );
+    token: 'test-token',
+    profile: Profile(
+      userKey: 'kiepthan4',
+      name: 'kiepthan4',
+      email: 'kiepthan4444@gmail.com',
+      age: 18,
+    ),
+  );
 
   @override
   Future<AuthSession> register({
@@ -139,14 +134,9 @@ class _OfflineApi implements TikTubeApi {
     required String password,
     int? age,
   }) async => AuthSession(
-        token: 'test-token',
-        profile: Profile(
-          userKey: username,
-          name: name,
-          email: email,
-          age: age,
-        ),
-      );
+    token: 'test-token',
+    profile: Profile(userKey: username, name: name, email: email, age: age),
+  );
 
   @override
   Future<void> logout() async {}
@@ -162,8 +152,10 @@ class _BadLoginApi extends _OfflineApi {
   Future<AuthSession> login({
     required String login,
     required String password,
-  }) async => throw ApiException('Tên đăng nhập hoặc mật khẩu không đúng.',
-      statusCode: 401);
+  }) async => throw ApiException(
+    'Tên đăng nhập hoặc mật khẩu không đúng.',
+    statusCode: 401,
+  );
 }
 
 class _MemoryAuthStore implements AuthSessionStore {
@@ -194,6 +186,50 @@ class _StatsApi extends _OfflineApi {
         DailyViews(date: today, views: 4),
       ],
       topVideos: kLatestVideos.take(2).toList(),
+    );
+  }
+}
+
+class _MobileDataApi extends _OfflineApi {
+  @override
+  Future<List<Video>> fetchUploads() async => kLatestVideos.take(3).toList();
+
+  @override
+  Future<List<WatchHistoryItem>> fetchWatchHistory() async =>
+      <WatchHistoryItem>[
+        WatchHistoryItem(
+          video: kLatestVideos[0],
+          watchedAt: DateTime.now()
+              .subtract(const Duration(hours: 2))
+              .toIso8601String(),
+        ),
+        WatchHistoryItem(
+          video: kLatestVideos[1],
+          watchedAt: DateTime.now()
+              .subtract(const Duration(days: 1))
+              .toIso8601String(),
+        ),
+      ];
+
+  @override
+  Future<List<Channel>> fetchSubscriptions() async => kSubscribedChannels;
+
+  @override
+  Future<CreatorStats> fetchStats() async {
+    final DateTime today = DateTime.now();
+    return CreatorStats(
+      videos: 33,
+      views: 9876543,
+      likes: 4321,
+      comments: 22,
+      daily: <DailyViews>[
+        for (int index = 6; index >= 0; index--)
+          DailyViews(
+            date: today.subtract(Duration(days: index)),
+            views: 10 + index * 7,
+          ),
+      ],
+      topVideos: kLatestVideos.take(3).toList(),
     );
   }
 }
@@ -239,6 +275,77 @@ void main() {
     expect(find.text('Tài khoản'), findsOneWidget);
   });
 
+  testWidgets('Các trang con hiển thị gọn trên điện thoại', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.padding = const FakeViewPadding(top: 24, bottom: 16);
+    addTearDown(tester.view.reset);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      PtkTubeApp(api: _MobileDataApi(), authRequired: false),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.text('Tài khoản'));
+    await tester.pumpAndSettle();
+    expect(find.text('Xin chào!'), findsOneWidget);
+    expect(find.text('Đăng xuất'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Tài khoản')).dy,
+      greaterThanOrEqualTo(24),
+    );
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byTooltip('Quay lại'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Lịch sử'));
+    await tester.pumpAndSettle();
+    expect(find.text('Đã đăng'), findsOneWidget);
+    expect(find.text('Video đã đăng'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.text('Đã xem'));
+    await tester.pumpAndSettle();
+    expect(find.text('Video đã xem'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byTooltip('Thống kê'));
+    await tester.pumpAndSettle();
+    expect(find.text('Thống Kê Video'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byTooltip('Quay lại'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Quay lại'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Đăng ký'));
+    await tester.pumpAndSettle();
+    expect(find.text('Kênh bạn đã đăng ký'), findsOneWidget);
+    expect(find.text('Đã đăng ký'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byTooltip('Quay lại'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Đăng'));
+    await tester.pumpAndSettle();
+    expect(find.text('Tải video'), findsOneWidget);
+    expect(find.text('Chọn video để tải lên'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byTooltip('Quay lại'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(VideoCard).first);
+    await tester.pumpAndSettle();
+    expect(find.text('Bình luận'), findsOneWidget);
+    expect(find.text('Video liên quan'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Trang chủ báo lỗi thay vì dùng dữ liệu mẫu khi API offline', (
     WidgetTester tester,
   ) async {
@@ -247,9 +354,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(
-      PtkTubeApp(api: _BrokenApi(), authRequired: false),
-    );
+    await tester.pumpWidget(PtkTubeApp(api: _BrokenApi(), authRequired: false));
     await tester.pumpAndSettle();
 
     expect(find.text('Không tải được dữ liệu từ Neon'), findsOneWidget);
@@ -266,9 +371,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(
-      PtkTubeApp(api: _StatsApi(), authRequired: false),
-    );
+    await tester.pumpWidget(PtkTubeApp(api: _StatsApi(), authRequired: false));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Lịch sử'));
@@ -494,6 +597,9 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('auth-submit')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Tên đăng nhập hoặc mật khẩu không đúng.'), findsOneWidget);
+    expect(
+      find.text('Tên đăng nhập hoặc mật khẩu không đúng.'),
+      findsOneWidget,
+    );
   });
 }

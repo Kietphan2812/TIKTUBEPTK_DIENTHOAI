@@ -10,6 +10,7 @@ import '../widgets/app_pill.dart';
 import '../widgets/app_tab_pill.dart';
 import '../widgets/data_state.dart';
 import '../widgets/greeting_bar.dart';
+import '../widgets/mobile_segmented_tabs.dart';
 import '../widgets/section_top_bar.dart';
 import '../widgets/video_thumb.dart';
 import 'account_screen.dart';
@@ -187,12 +188,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+    final bool compact = MediaQuery.sizeOf(context).width < 700;
 
     return Scaffold(
       backgroundColor: p.bg,
       body: Column(
         children: <Widget>[
           SectionTopBar(
+            title: 'Lịch sử',
             onBack: () => Navigator.of(context).maybePop(),
             onHome: _goHome,
             onAccount: _openAccount,
@@ -200,95 +203,123 @@ class _HistoryScreenState extends State<HistoryScreen> {
             onSearch: _goHome,
           ),
           Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1280),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      GreetingBar(onTap: _openAccount),
-                      const SizedBox(height: 14),
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 8,
+            child: SafeArea(
+              top: false,
+              child: RefreshIndicator(
+                color: p.brandRed,
+                onRefresh: _load,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.fromLTRB(
+                    compact ? 14 : 20,
+                    compact ? 14 : 20,
+                    compact ? 14 : 20,
+                    32,
+                  ),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1280),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          AppTabPill(
-                            label: 'LỊCH SỬ ĐĂNG VIDEO',
-                            selected: _tab == 0,
-                            onTap: () => setState(() => _tab = 0),
-                          ),
-                          AppTabPill(
-                            label: 'LỊCH SỬ XEM VIDEO',
-                            selected: _tab == 1,
-                            onTap: () => setState(() => _tab = 1),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: Text(
-                              _tab == 0
-                                  ? 'Lịch sử Đăng Video của bạn'
-                                  : 'Lịch sử Xem Video của bạn',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.2,
-                                color: p.textPrimary,
+                          if (!compact) ...<Widget>[
+                            GreetingBar(onTap: _openAccount),
+                            const SizedBox(height: 14),
+                          ],
+                          if (compact)
+                            MobileSegmentedTabs(
+                              labels: const <String>['Đã đăng', 'Đã xem'],
+                              selectedIndex: _tab,
+                              onChanged: (int index) =>
+                                  setState(() => _tab = index),
+                            )
+                          else
+                            Wrap(
+                              spacing: 10,
+                              runSpacing: 8,
+                              children: <Widget>[
+                                AppTabPill(
+                                  label: 'LỊCH SỬ ĐĂNG VIDEO',
+                                  selected: _tab == 0,
+                                  onTap: () => setState(() => _tab = 0),
+                                ),
+                                AppTabPill(
+                                  label: 'LỊCH SỬ XEM VIDEO',
+                                  selected: _tab == 1,
+                                  onTap: () => setState(() => _tab = 1),
+                                ),
+                              ],
+                            ),
+                          SizedBox(height: compact ? 16 : 20),
+                          Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: Text(
+                                  compact
+                                      ? (_tab == 0
+                                            ? 'Video đã đăng'
+                                            : 'Video đã xem')
+                                      : (_tab == 0
+                                            ? 'Lịch sử Đăng Video của bạn'
+                                            : 'Lịch sử Xem Video của bạn'),
+                                  style: TextStyle(
+                                    fontSize: compact ? 17 : 18,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: -0.2,
+                                    color: p.textPrimary,
+                                  ),
+                                ),
                               ),
-                            ),
+                              if (!_loading &&
+                                  _error == null &&
+                                  _tab == 1 &&
+                                  _watched.isNotEmpty)
+                                AppPill(
+                                  label: compact
+                                      ? 'Xoá hết'
+                                      : 'Xoá tất cả lịch sử xem',
+                                  height: 30,
+                                  fontSize: 10.5,
+                                  background: p.chip,
+                                  onTap: _clearHistory,
+                                ),
+                            ],
                           ),
-                          if (!_loading &&
-                              _error == null &&
-                              _tab == 1 &&
-                              _watched.isNotEmpty)
-                            AppPill(
-                              label: 'Xoá tất cả lịch sử xem',
-                              height: 30,
-                              fontSize: 10.5,
-                              background: p.chip,
-                              onTap: _clearHistory,
+                          const SizedBox(height: 12),
+                          if (_loading)
+                            const DataLoading(
+                              message: 'Đang tải lịch sử từ Neon...',
+                            )
+                          else if (_error != null)
+                            DataError(message: _error!, onRetry: _load)
+                          else if (_tab == 0)
+                            _uploads.isEmpty
+                                ? const _EmptyState(
+                                    icon: Icons.video_library_outlined,
+                                    title: 'Bạn chưa đăng video nào',
+                                    subtitle: 'Video sau khi đăng sẽ xuất hiện tại đây.',
+                                  )
+                                : _UploadTable(
+                                    uploads: _uploads,
+                                    compact: compact,
+                                    onEdit: _editUpload,
+                                    onDelete: _deleteUpload,
+                                  )
+                          else if (_watched.isEmpty)
+                            const _EmptyState(
+                              icon: Icons.history_rounded,
+                              title: 'Lịch sử xem video trống',
+                              subtitle: 'Những video bạn đã xem sẽ được lưu lại tại đây.',
+                            )
+                          else
+                            _WatchHistory(
+                              items: _watched,
+                              onOpen: _openWatch,
+                              onRemove: _removeHistory,
                             ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      if (_loading)
-                        const DataLoading(
-                          message: 'Đang tải lịch sử từ Neon...',
-                        )
-                      else if (_error != null)
-                        DataError(message: _error!, onRetry: _load)
-                      else if (_tab == 0)
-                        _uploads.isEmpty
-                            ? const _EmptyState(
-                                icon: Icons.video_library_outlined,
-                                title: 'Bạn chưa đăng video nào',
-                                subtitle:
-                                    'Video sau khi đăng sẽ xuất hiện tại đây.',
-                              )
-                            : _UploadTable(
-                                uploads: _uploads,
-                                onEdit: _editUpload,
-                                onDelete: _deleteUpload,
-                              )
-                      else if (_watched.isEmpty)
-                        const _EmptyState(
-                          icon: Icons.history_rounded,
-                          title: 'Lịch sử xem video trống',
-                          subtitle:
-                              'Những video bạn đã xem sẽ được lưu lại tại đây.',
-                        )
-                      else
-                        _WatchHistory(
-                          items: _watched,
-                          onOpen: _openWatch,
-                          onRemove: _removeHistory,
-                        ),
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -303,17 +334,34 @@ class _HistoryScreenState extends State<HistoryScreen> {
 class _UploadTable extends StatelessWidget {
   const _UploadTable({
     required this.uploads,
+    required this.compact,
     required this.onEdit,
     required this.onDelete,
   });
 
   final List<Video> uploads;
+  final bool compact;
   final ValueChanged<Video> onEdit;
   final ValueChanged<Video> onDelete;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+
+    if (compact) {
+      return Column(
+        children: <Widget>[
+          for (final Video video in uploads) ...<Widget>[
+            _UploadCard(
+              video: video,
+              onEdit: () => onEdit(video),
+              onDelete: () => onDelete(video),
+            ),
+            const SizedBox(height: 10),
+          ],
+        ],
+      );
+    }
 
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
@@ -385,6 +433,133 @@ class _UploadTable extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _UploadCard extends StatelessWidget {
+  const _UploadCard({
+    required this.video,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final Video video;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: p.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: p.border),
+      ),
+      child: Column(
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              SizedBox(
+                width: 108,
+                child: VideoThumb(video: video, radius: 8, showControls: false),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(
+                            video.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              height: 1.3,
+                              fontWeight: FontWeight.w600,
+                              color: p.textPrimary,
+                            ),
+                          ),
+                        ),
+                        if (!video.isApproved) ...<Widget>[
+                          const SizedBox(width: 4),
+                          _UploadStatusBadge(video: video),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      video.tags.isEmpty
+                          ? video.category
+                          : video.tags.map((String tag) => '#$tag').join(' '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 10, color: p.textSecondary),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      '${video.viewsLabel} · ${video.likeCount} thích · '
+                      '${video.commentCount} bình luận',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        height: 1.35,
+                        color: p.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: <Widget>[
+              TextButton.icon(
+                onPressed: onEdit,
+                icon: const Icon(Icons.edit_outlined, size: 16),
+                label: const Text('Sửa'),
+                style: TextButton.styleFrom(
+                  foregroundColor: p.textPrimary,
+                  minimumSize: const Size(0, 36),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  textStyle: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              TextButton.icon(
+                onPressed: onDelete,
+                icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                label: const Text('Xóa'),
+                style: TextButton.styleFrom(
+                  foregroundColor: p.brandRed,
+                  minimumSize: const Size(0, 36),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  textStyle: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -562,15 +737,16 @@ class _WatchHistory extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+    final bool compact = MediaQuery.sizeOf(context).width < 700;
 
     return Column(
       children: <Widget>[
         for (final WatchHistoryItem item in items) ...<Widget>[
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: EdgeInsets.all(compact ? 8 : 10),
             decoration: BoxDecoration(
               color: p.surface,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(compact ? 12 : 8),
               border: Border.all(color: p.border),
             ),
             child: Row(
@@ -580,7 +756,7 @@ class _WatchHistory extends StatelessWidget {
                   child: GestureDetector(
                     onTap: () => onOpen(item.video),
                     child: SizedBox(
-                      width: 140,
+                      width: compact ? 112 : 140,
                       child: VideoThumb(
                         video: item.video,
                         radius: 6,
@@ -589,7 +765,7 @@ class _WatchHistory extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Expanded(
                   child: MouseRegion(
                     cursor: SystemMouseCursors.click,
@@ -601,27 +777,32 @@ class _WatchHistory extends StatelessWidget {
                         children: <Widget>[
                           Text(
                             item.video.title,
-                            maxLines: 1,
+                            maxLines: compact ? 2 : 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 13,
+                              fontSize: compact ? 12.5 : 13,
+                              height: 1.3,
                               fontWeight: FontWeight.w600,
                               color: p.textPrimary,
                             ),
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            '${item.video.channel} · ${item.video.viewsLabel} · ${item.video.date}',
+                            '${item.video.channel} · ${item.video.viewsLabel}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 11,
+                              fontSize: 10.5,
                               color: p.textSecondary,
                             ),
                           ),
-                          const SizedBox(height: 3),
+                          const SizedBox(height: 2),
                           Text(
-                            item.watchedLabel,
+                            '${item.video.date} · ${item.watchedLabel}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 10.5,
+                              fontSize: 10,
                               color: p.textSecondary.withValues(alpha: 0.85),
                             ),
                           ),
@@ -633,6 +814,12 @@ class _WatchHistory extends StatelessWidget {
                 IconButton(
                   onPressed: () => onRemove(item),
                   tooltip: 'Xoá khỏi lịch sử',
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 36,
+                    height: 36,
+                  ),
+                  padding: EdgeInsets.zero,
                   icon: Icon(
                     Icons.close_rounded,
                     size: 18,

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'auth/auth_controller.dart';
 import 'auth/auth_scope.dart';
@@ -71,6 +72,8 @@ class _PtkTubeAppState extends State<PtkTubeApp> {
               theme: AppTheme.light(),
               darkTheme: AppTheme.dark(),
               themeMode: _theme.mode,
+              builder: (BuildContext context, Widget? child) =>
+                  _appChrome(child, dark: _theme.isDark),
               home: child,
             ),
           );
@@ -99,11 +102,33 @@ class _PtkTubeAppState extends State<PtkTubeApp> {
               theme: AppTheme.light(),
               darkTheme: AppTheme.dark(),
               themeMode: _theme.mode,
+              builder: (BuildContext context, Widget? child) => _appChrome(
+                child,
+                dark: auth.status != AuthStatus.authenticated || _theme.isDark,
+              ),
               home: home,
             ),
           ),
         );
       },
+    );
+  }
+
+  /// Đặt màu icon thanh trạng thái/thanh điều hướng theo nền từng màn hình.
+  Widget _appChrome(Widget? child, {required bool dark}) {
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: dark ? Brightness.light : Brightness.dark,
+        statusBarBrightness: dark ? Brightness.dark : Brightness.light,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: dark
+            ? Brightness.light
+            : Brightness.dark,
+        systemNavigationBarDividerColor: Colors.transparent,
+        systemNavigationBarContrastEnforced: false,
+      ),
+      child: child ?? const SizedBox.shrink(),
     );
   }
 }
@@ -142,10 +167,7 @@ class _AuthSplashScreen extends StatelessWidget {
                       gradient: const LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
-                        colors: <Color>[
-                          Color(0xFFFF3850),
-                          Color(0xFFC90C27),
-                        ],
+                        colors: <Color>[Color(0xFFFF3850), Color(0xFFC90C27)],
                       ),
                       borderRadius: BorderRadius.circular(7),
                     ),

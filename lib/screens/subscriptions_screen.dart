@@ -6,6 +6,7 @@ import '../models/channel.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_tab_pill.dart';
 import '../widgets/data_state.dart';
+import '../widgets/mobile_segmented_tabs.dart';
 import '../widgets/section_top_bar.dart';
 import 'account_screen.dart';
 
@@ -57,10 +58,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          duration: const Duration(seconds: 2),
-        ),
+        SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
       );
   }
 
@@ -85,108 +83,235 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
       Navigator.of(context).popUntil((Route<dynamic> route) => route.isFirst);
 
   void _openAccount() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => AccountScreen(api: _api)),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => AccountScreen(api: _api)));
   }
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+    final bool compact = MediaQuery.sizeOf(context).width < 700;
 
     return Scaffold(
       backgroundColor: p.bg,
       body: Column(
         children: <Widget>[
           SectionTopBar(
+            title: 'Đăng ký',
             onBack: () => Navigator.of(context).maybePop(),
             onHome: _goHome,
             onAccount: _openAccount,
             onSearch: _goHome,
           ),
           Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1200),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 8,
-                        children: <Widget>[
-                          AppTabPill(
-                            label: 'KÊNH ĐÃ ĐĂNG KÝ',
-                            selected: _tab == 0,
-                            onTap: () => setState(() => _tab = 0),
-                          ),
-                          AppTabPill(
-                            label: 'NGƯỜI ĐĂNG KÝ KÊNH BẠN',
-                            selected: _tab == 1,
-                            onTap: () => setState(() => _tab = 1),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      Text(
-                        _tab == 0
-                            ? 'Kênh bạn đã đăng ký'
-                            : 'Người đăng ký kênh bạn',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.2,
-                          color: p.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        _tab == 0
-                            ? 'Danh sách những người sáng tạo nội dung bạn đang theo dõi.'
-                            : 'Những người đang theo dõi nội dung của bạn.',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          color: p.textSecondary,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      if (_loading)
-                        const DataLoading(
-                          message: 'Đang tải danh sách kênh từ Neon...',
-                        )
-                      else if (_error != null)
-                        DataError(message: _error!, onRetry: _load)
-                      else if (_tab == 1)
-                        _EmptyState(
-                          icon: Icons.group_outlined,
-                          title: 'Chưa có ai đăng ký kênh bạn',
-                          subtitle:
-                              'Hãy đăng video đều đặn để có thêm người theo dõi.',
-                        )
-                      else if (_channels.isEmpty)
-                        _EmptyState(
-                          icon: Icons.subscriptions_outlined,
-                          title: 'Bạn chưa đăng ký kênh nào',
-                          subtitle:
-                              'Nhấn Đăng ký ở trang xem video để theo dõi kênh yêu thích.',
-                        )
-                      else
-                        Wrap(
-                          spacing: 16,
-                          runSpacing: 16,
-                          children: <Widget>[
-                            for (final Channel channel in _channels)
-                              _ChannelCard(
-                                channel: channel,
-                                onUnsubscribe: () => _unsubscribe(channel),
+            child: SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  compact ? 14 : 20,
+                  compact ? 14 : 20,
+                  compact ? 14 : 20,
+                  32,
+                ),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1200),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        if (compact)
+                          MobileSegmentedTabs(
+                            labels: const <String>[
+                              'Đã đăng ký',
+                              'Người theo dõi',
+                            ],
+                            selectedIndex: _tab,
+                            onChanged: (int index) =>
+                                setState(() => _tab = index),
+                          )
+                        else
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 8,
+                            children: <Widget>[
+                              AppTabPill(
+                                label: 'KÊNH ĐÃ ĐĂNG KÝ',
+                                selected: _tab == 0,
+                                onTap: () => setState(() => _tab = 0),
                               ),
-                          ],
+                              AppTabPill(
+                                label: 'NGƯỜI ĐĂNG KÝ KÊNH BẠN',
+                                selected: _tab == 1,
+                                onTap: () => setState(() => _tab = 1),
+                              ),
+                            ],
+                          ),
+                        SizedBox(height: compact ? 16 : 20),
+                        Text(
+                          _tab == 0
+                              ? 'Kênh bạn đã đăng ký'
+                              : 'Người đăng ký kênh bạn',
+                          style: TextStyle(
+                            fontSize: compact ? 17 : 18,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.2,
+                            color: p.textPrimary,
+                          ),
                         ),
-                    ],
+                        const SizedBox(height: 3),
+                        Text(
+                          _tab == 0
+                              ? 'Danh sách những người sáng tạo nội dung bạn đang theo dõi.'
+                              : 'Những người đang theo dõi nội dung của bạn.',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            height: 1.4,
+                            color: p.textSecondary,
+                          ),
+                        ),
+                        SizedBox(height: compact ? 14 : 18),
+                        if (_loading)
+                          const DataLoading(
+                            message: 'Đang tải danh sách kênh từ Neon...',
+                          )
+                        else if (_error != null)
+                          DataError(message: _error!, onRetry: _load)
+                        else if (_tab == 1)
+                          _EmptyState(
+                            icon: Icons.group_outlined,
+                            title: 'Chưa có ai đăng ký kênh bạn',
+                            subtitle: 'Hãy đăng video đều đặn để có thêm người theo dõi.',
+                          )
+                        else if (_channels.isEmpty)
+                          _EmptyState(
+                            icon: Icons.subscriptions_outlined,
+                            title: 'Bạn chưa đăng ký kênh nào',
+                            subtitle: 'Nhấn Đăng ký ở trang xem video để theo dõi kênh yêu thích.',
+                          )
+                        else if (compact)
+                          Column(
+                            children: <Widget>[
+                              for (final Channel channel
+                                  in _channels) ...<Widget>[
+                                _MobileChannelTile(
+                                  channel: channel,
+                                  onUnsubscribe: () => _unsubscribe(channel),
+                                ),
+                                const SizedBox(height: 10),
+                              ],
+                            ],
+                          )
+                        else
+                          Wrap(
+                            spacing: 16,
+                            runSpacing: 16,
+                            children: <Widget>[
+                              for (final Channel channel in _channels)
+                                _ChannelCard(
+                                  channel: channel,
+                                  onUnsubscribe: () => _unsubscribe(channel),
+                                ),
+                            ],
+                          ),
+                      ],
+                    ),
                   ),
                 ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MobileChannelTile extends StatelessWidget {
+  const _MobileChannelTile({
+    required this.channel,
+    required this.onUnsubscribe,
+  });
+
+  final Channel channel;
+  final VoidCallback onUnsubscribe;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: p.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: p.border),
+      ),
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: 48,
+            height: 48,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: channel.colors,
+              ),
+            ),
+            child: Text(
+              channel.initial,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  channel.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: p.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${channel.videoCount} video · ${channel.subscriberLabel}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 10.5, color: p.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            height: 34,
+            child: OutlinedButton(
+              onPressed: onUnsubscribe,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: p.textPrimary,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                visualDensity: VisualDensity.compact,
+                side: BorderSide(color: p.border),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: const Text(
+                'Hủy đăng ký',
+                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600),
               ),
             ),
           ),
@@ -214,11 +339,7 @@ class _ChannelCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: p.border),
         boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: p.shadow,
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
+          BoxShadow(color: p.shadow, blurRadius: 8, offset: const Offset(0, 2)),
         ],
       ),
       child: Column(

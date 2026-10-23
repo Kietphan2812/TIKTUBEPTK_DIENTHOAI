@@ -4,8 +4,8 @@ import '../auth/auth_scope.dart';
 import '../data/api_client.dart';
 import '../data/tiktube_api.dart';
 import '../models/profile.dart';
-import '../widgets/app_pill.dart';
-import '../widgets/dashed_box.dart';
+import '../theme/app_theme.dart';
+import '../widgets/section_top_bar.dart';
 
 class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key, this.api});
@@ -17,12 +17,6 @@ class AccountScreen extends StatefulWidget {
 }
 
 class _AccountScreenState extends State<AccountScreen> {
-  static const Color _purple = Color(0xFF7A6BF0);
-  static const Color _ink = Color(0xFF262633);
-  static const Color _muted = Color(0xFF5D5D6E);
-  static const Color _card = Color(0xFFF2F0FA);
-  static const Color _fieldBorder = Color(0xFFDAD8E8);
-
   late final TikTubeApi _api;
   final TextEditingController _username = TextEditingController();
   final TextEditingController _email = TextEditingController();
@@ -118,6 +112,7 @@ class _AccountScreenState extends State<AccountScreen> {
       return;
     }
 
+    FocusScope.of(context).unfocus();
     setState(() => _saving = true);
     try {
       final Profile profile = await _api.updateProfile(
@@ -127,7 +122,7 @@ class _AccountScreenState extends State<AccountScreen> {
       );
       if (!mounted) return;
       setState(() {
-        _displayName = profile.name;
+        _displayName = profile.name.isEmpty ? profile.userKey : profile.name;
         _userKey = profile.userKey;
         _saving = false;
       });
@@ -140,353 +135,498 @@ class _AccountScreenState extends State<AccountScreen> {
     }
   }
 
-  void _updateAge() {
-    final value = _age.text.trim();
-    final int? age = int.tryParse(value);
-    if (age == null || age < 1 || age > 120) {
-      _notify('Vui lòng nhập số tuổi hợp lệ (1–120).');
-      return;
-    }
-    _save(message: 'Đã cập nhật tuổi: $age.');
+  void _goHome() {
+    Navigator.of(context).popUntil((Route<dynamic> route) => route.isFirst);
   }
 
   Future<void> _logout() async {
     final auth = AuthScope.maybeOf(context);
     if (auth == null) {
-      _notify('Đã đăng xuất khỏi tài khoản $_displayName.');
-      Navigator.of(context).maybePop();
+      _goHome();
       return;
     }
-    final navigator = Navigator.of(context);
-    navigator.popUntil((Route<dynamic> route) => route.isFirst);
+    _goHome();
     await auth.logout();
   }
 
   @override
   Widget build(BuildContext context) {
+    final p = context.palette;
+    final bool compact = MediaQuery.sizeOf(context).width < 700;
+
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: <Color>[Color(0xFF6C7BF0), Color(0xFF8A5CD9)],
+      backgroundColor: p.bg,
+      body: Column(
+        children: <Widget>[
+          SectionTopBar(
+            title: 'Tài khoản',
+            onBack: () => Navigator.of(context).maybePop(),
+            onHome: _goHome,
           ),
-        ),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 384),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(26, 28, 26, 22),
-                  decoration: BoxDecoration(
-                    color: _card,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: <BoxShadow>[
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.18),
-                        blurRadius: 30,
-                        offset: const Offset(0, 12),
-                      ),
-                    ],
+          Expanded(
+            child: SafeArea(
+              top: false,
+              child: RefreshIndicator(
+                color: p.brandRed,
+                onRefresh: _load,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.fromLTRB(
+                    compact ? 14 : 24,
+                    compact ? 14 : 24,
+                    compact ? 14 : 24,
+                    32,
                   ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      const Text(
-                        'Xin chào!',
-                        style: TextStyle(
-                          fontSize: 27,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.4,
-                          color: _ink,
-                        ),
-                      ),
-                      if (_loading)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Text(
-                            'Đang tải hồ sơ từ Neon...',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: _muted.withValues(alpha: 0.8),
-                            ),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 680),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          _ProfileHeader(
+                            displayName: _displayName,
+                            userKey: _userKey,
+                            loading: _loading,
+                            compact: compact,
                           ),
-                        )
-                      else if (_error != null)
-                        TextButton(
-                          onPressed: _load,
-                          child: const Text(
-                            'Không tải được hồ sơ — Thử lại',
-                            style: TextStyle(fontSize: 11),
-                          ),
-                        ),
-                      const SizedBox(height: 20),
-                      SizedBox(
-                        width: 92,
-                        height: 92,
-                        child: Stack(
-                          children: <Widget>[
-                            Container(
-                              width: 88,
-                              height: 88,
-                              alignment: Alignment.center,
-                              decoration: const BoxDecoration(
-                                shape: BoxShape.circle,
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: <Color>[
-                                    Color(0xFF5B6B8C),
-                                    Color(0xFF32405C),
-                                  ],
-                                ),
-                              ),
-                              child: const Icon(
-                                Icons.person_rounded,
-                                size: 50,
-                                color: Colors.white,
-                              ),
-                            ),
-                            Positioned(
-                              right: 0,
-                              bottom: 0,
-                              child: Container(
-                                width: 26,
-                                height: 26,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: _purple,
-                                  border: Border.all(color: _card, width: 2),
-                                ),
-                                child: const Icon(
-                                  Icons.edit_rounded,
-                                  size: 12,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
+                          if (_error != null) ...<Widget>[
+                            const SizedBox(height: 12),
+                            _ErrorBanner(error: _error!, onRetry: _load),
                           ],
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      _Field(label: 'Tên hiển thị:', controller: _username),
-                      const SizedBox(height: 6),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Tên đăng nhập: @${_userKey.isEmpty ? '...' : _userKey}',
-                          style: const TextStyle(
-                            fontSize: 10.5,
-                            color: _muted,
-                            fontWeight: FontWeight.w500,
+                          const SizedBox(height: 16),
+                          _ProfileFormCard(
+                            compact: compact,
+                            username: _username,
+                            email: _email,
+                            age: _age,
+                            saving: _saving,
+                            onSave: _save,
                           ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      _Field(label: 'Email:', controller: _email),
-                      const SizedBox(height: 16),
-                      Center(
-                        child: AppPill(
-                          label: _saving ? 'Đang lưu...' : 'Lưu thông tin',
-                          height: 34,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          padding: const EdgeInsets.symmetric(horizontal: 22),
-                          background: _purple,
-                          foreground: Colors.white,
-                          onTap: _saving ? () {} : () => _save(),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      DashedBox(
-                        color: const Color(0xFFB9B4D8),
-                        radius: 8,
-                        padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
-                        child: Column(
-                          children: <Widget>[
-                            Text(
-                              'Tuổi của bạn: ${_age.text.isEmpty ? '--' : _age.text}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: _muted,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: <Widget>[
-                                SizedBox(
-                                  width: 96,
-                                  height: 30,
-                                  child: TextField(
-                                    controller: _age,
-                                    keyboardType: TextInputType.number,
-                                    onChanged: (_) => setState(() {}),
-                                    style: const TextStyle(
-                                      fontSize: 11.5,
-                                      color: _ink,
-                                    ),
-                                    decoration: InputDecoration(
-                                      isDense: true,
-                                      hintText: 'Số tuổi',
-                                      hintStyle: const TextStyle(
-                                        fontSize: 11,
-                                        color: _muted,
-                                      ),
-                                      filled: true,
-                                      fillColor: Colors.white,
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            horizontal: 10,
-                                            vertical: 7,
-                                          ),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(5),
-                                        borderSide: const BorderSide(
-                                          color: _fieldBorder,
-                                        ),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(5),
-                                        borderSide: const BorderSide(
-                                          color: _fieldBorder,
-                                        ),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(5),
-                                        borderSide: const BorderSide(
-                                          color: _purple,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                AppPill(
-                                  label: 'Cập nhật',
-                                  height: 30,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                  ),
-                                  background: _purple,
-                                  foreground: Colors.white,
-                                  onTap: _saving ? () {} : _updateAge,
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 42,
-                        child: FilledButton(
-                          onPressed: _logout,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFFF0475A),
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(6),
-                            ),
+                          const SizedBox(height: 16),
+                          _SessionCard(
+                            displayName: _displayName,
+                            onLogout: _logout,
                           ),
-                          child: const Text(
-                            'Đăng xuất',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
+                        ],
                       ),
-                      const SizedBox(height: 10),
-                      TextButton(
-                        onPressed: () => Navigator.of(context).maybePop(),
-                        style: TextButton.styleFrom(
-                          foregroundColor: _purple,
-                          textStyle: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        child: const Text('Vào xem video ngay →'),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileHeader extends StatelessWidget {
+  const _ProfileHeader({
+    required this.displayName,
+    required this.userKey,
+    required this.loading,
+    required this.compact,
+  });
+
+  final String displayName;
+  final String userKey;
+  final bool loading;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+
+    return Container(
+      padding: EdgeInsets.all(compact ? 16 : 22),
+      decoration: BoxDecoration(
+        color: p.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: p.border),
+      ),
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: compact ? 58 : 66,
+            height: compact ? 58 : 66,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(colors: p.ctaGradient),
+            ),
+            child: const Icon(
+              Icons.person_rounded,
+              size: 32,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'Xin chào!',
+                  style: TextStyle(
+                    fontSize: compact ? 20 : 23,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.4,
+                    color: p.textPrimary,
+                    height: 1.15,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: p.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '@${userKey.isEmpty ? '...' : userKey}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11.5, color: p.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          if (loading)
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: p.textSecondary,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileFormCard extends StatelessWidget {
+  const _ProfileFormCard({
+    required this.compact,
+    required this.username,
+    required this.email,
+    required this.age,
+    required this.saving,
+    required this.onSave,
+  });
+
+  final bool compact;
+  final TextEditingController username;
+  final TextEditingController email;
+  final TextEditingController age;
+  final bool saving;
+  final VoidCallback onSave;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+
+    return Container(
+      padding: EdgeInsets.all(compact ? 16 : 22),
+      decoration: BoxDecoration(
+        color: p.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: p.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'Thông tin cá nhân',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.2,
+              color: p.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            'Tài khoản dùng chung với phiên bản web TIKTUBE.',
+            style: TextStyle(fontSize: 11.5, color: p.textSecondary),
+          ),
+          const SizedBox(height: 18),
+          _ProfileField(
+            controller: username,
+            label: 'Tên hiển thị',
+            hint: 'Nhập tên hiển thị',
+            icon: Icons.person_outline_rounded,
+            textInputAction: TextInputAction.next,
+          ),
+          const SizedBox(height: 12),
+          _ProfileField(
+            controller: email,
+            label: 'Email',
+            hint: 'email@example.com',
+            icon: Icons.mail_outline_rounded,
+            keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.next,
+          ),
+          const SizedBox(height: 12),
+          _ProfileField(
+            controller: age,
+            label: 'Tuổi (không bắt buộc)',
+            hint: 'Ví dụ: 18',
+            icon: Icons.cake_outlined,
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.done,
+            onSubmitted: onSave,
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: FilledButton(
+              onPressed: saving ? null : onSave,
+              style: FilledButton.styleFrom(
+                backgroundColor: p.brandRed,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: p.brandRed.withValues(alpha: 0.5),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text(
+                      'Lưu thông tin',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileField extends StatelessWidget {
+  const _ProfileField({
+    required this.controller,
+    required this.label,
+    required this.hint,
+    required this.icon,
+    this.keyboardType,
+    this.textInputAction,
+    this.onSubmitted,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final String hint;
+  final IconData icon;
+  final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
+  final VoidCallback? onSubmitted;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final OutlineInputBorder border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: p.border),
+    );
+
+    return TextField(
+      controller: controller,
+      keyboardType: keyboardType,
+      textInputAction: textInputAction,
+      onSubmitted: (_) => onSubmitted?.call(),
+      style: TextStyle(
+        fontSize: 13.5,
+        fontWeight: FontWeight.w500,
+        color: p.textPrimary,
+      ),
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        labelStyle: TextStyle(fontSize: 12.5, color: p.textSecondary),
+        floatingLabelStyle: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: p.brandRed,
+        ),
+        hintStyle: TextStyle(
+          fontSize: 12.5,
+          color: p.textSecondary.withValues(alpha: 0.7),
+        ),
+        prefixIcon: Icon(icon, size: 19, color: p.textSecondary),
+        filled: true,
+        fillColor: p.surfaceAlt,
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 15,
+        ),
+        border: border,
+        enabledBorder: border,
+        focusedBorder: border.copyWith(
+          borderSide: BorderSide(color: p.brandRed, width: 1.4),
         ),
       ),
     );
   }
 }
 
-class _Field extends StatelessWidget {
-  const _Field({required this.label, required this.controller});
+class _SessionCard extends StatelessWidget {
+  const _SessionCard({required this.displayName, required this.onLogout});
 
-  final String label;
-  final TextEditingController controller;
+  final String displayName;
+  final VoidCallback onLogout;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 11,
-            color: _AccountScreenState._muted,
+    final p = context.palette;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: p.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: p.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(
+                Icons.verified_user_outlined,
+                size: 18,
+                color: p.textSecondary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Phiên đăng nhập',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: p.textPrimary,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2E9E62).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: const Text(
+                  'Đang hoạt động',
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF2E9E62),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ),
-        const SizedBox(height: 5),
-        SizedBox(
-          height: 34,
-          child: TextField(
-            controller: controller,
-            style: const TextStyle(
-              fontSize: 12,
-              color: _AccountScreenState._ink,
+          const SizedBox(height: 6),
+          Text(
+            'Đăng nhập với tài khoản $displayName · phiên lưu 30 ngày.',
+            style: TextStyle(
+              fontSize: 11.5,
+              height: 1.4,
+              color: p.textSecondary,
             ),
-            decoration: InputDecoration(
-              isDense: true,
-              filled: true,
-              fillColor: Colors.white,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 10,
-                vertical: 8,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(5),
-                borderSide: const BorderSide(
-                  color: _AccountScreenState._fieldBorder,
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            height: 44,
+            child: OutlinedButton.icon(
+              onPressed: onLogout,
+              icon: const Icon(Icons.logout_rounded, size: 18),
+              label: const Text('Đăng xuất'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: p.brandRed,
+                side: BorderSide(color: p.brandRed.withValues(alpha: 0.45)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(5),
-                borderSide: const BorderSide(
-                  color: _AccountScreenState._fieldBorder,
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(5),
-                borderSide: const BorderSide(
-                  color: _AccountScreenState._purple,
+                textStyle: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({required this.error, required this.onRetry});
+
+  final String error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+      decoration: BoxDecoration(
+        color: p.brandRed.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: p.brandRed.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        children: <Widget>[
+          Icon(Icons.cloud_off_rounded, size: 17, color: p.brandRed),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Không tải được hồ sơ từ Neon. Đang dùng dữ liệu đã lưu.',
+              style: TextStyle(
+                fontSize: 11.5,
+                height: 1.35,
+                color: p.textSecondary,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: onRetry,
+            style: TextButton.styleFrom(
+              foregroundColor: p.brandRed,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: const Size(0, 32),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text(
+              'Thử lại',
+              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

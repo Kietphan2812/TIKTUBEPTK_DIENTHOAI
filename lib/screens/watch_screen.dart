@@ -10,6 +10,7 @@ import '../theme/app_theme.dart';
 import '../widgets/app_pill.dart';
 import '../widgets/channel_avatar.dart';
 import '../widgets/data_state.dart';
+import '../widgets/section_top_bar.dart';
 import '../widgets/video_surface.dart';
 import '../widgets/video_thumb.dart';
 
@@ -234,149 +235,85 @@ class _WatchScreenState extends State<WatchScreen> {
       backgroundColor: p.bg,
       body: Column(
         children: <Widget>[
-          _WatchBar(onBack: () => Navigator.of(context).pop()),
+          SectionTopBar(
+            title: 'Xem video',
+            onBack: () => Navigator.of(context).pop(),
+          ),
           Expanded(
-            child: LayoutBuilder(
-              builder: (BuildContext context, BoxConstraints constraints) {
-                final bool wide = constraints.maxWidth >= 900;
-                final double pad = constraints.maxWidth < 700 ? 12 : 20;
+            child: SafeArea(
+              top: false,
+              child: LayoutBuilder(
+                builder: (BuildContext context, BoxConstraints constraints) {
+                  final bool wide = constraints.maxWidth >= 900;
+                  final bool compact = constraints.maxWidth < 700;
+                  final double pad = compact ? 12 : 20;
 
-                final Widget main = _MainColumn(
-                  video: widget.video,
-                  subscribed: _subscribed,
-                  subscriberCount: _subscriberCount,
-                  liked: _liked,
-                  likeCount: _likeCount,
-                  comments: _comments,
-                  commentsLoading: _commentsLoading,
-                  commentsError: _commentsError,
-                  commentController: _commentController,
-                  currentUserName: commentAuthor,
-                  onReloadComments: _loadComments,
-                  onToggleSubscribe: _toggleSubscribe,
-                  onToggleLike: _toggleLike,
-                  onAddComment: _addComment,
-                  onDeleteComment: _deleteComment,
-                  onNotify: _notify,
-                );
+                  final Widget main = _MainColumn(
+                    video: widget.video,
+                    subscribed: _subscribed,
+                    subscriberCount: _subscriberCount,
+                    liked: _liked,
+                    likeCount: _likeCount,
+                    comments: _comments,
+                    commentsLoading: _commentsLoading,
+                    commentsError: _commentsError,
+                    commentController: _commentController,
+                    currentUserName: commentAuthor,
+                    onReloadComments: _loadComments,
+                    onToggleSubscribe: _toggleSubscribe,
+                    onToggleLike: _toggleLike,
+                    onAddComment: _addComment,
+                    onDeleteComment: _deleteComment,
+                    onNotify: _notify,
+                  );
 
-                final Widget sidebar = _RelatedList(
-                  videos: related,
-                  onTap: (Video video) {
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute<void>(
-                        builder: (_) => WatchScreen(
-                          video: video,
-                          api: widget.api,
-                          related: widget.related,
+                  final Widget sidebar = _RelatedList(
+                    videos: related,
+                    onTap: (Video video) {
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute<void>(
+                          builder: (_) => WatchScreen(
+                            video: video,
+                            api: widget.api,
+                            related: widget.related,
+                          ),
+                        ),
+                      );
+                    },
+                  );
+
+                  return Scrollbar(
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: pad,
+                        vertical: compact ? 10 : 16,
+                      ),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 1440),
+                          child: wide
+                              ? Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    Expanded(child: main),
+                                    const SizedBox(width: 26),
+                                    SizedBox(width: 356, child: sidebar),
+                                  ],
+                                )
+                              : Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    main,
+                                    SizedBox(height: compact ? 18 : 26),
+                                    sidebar,
+                                  ],
+                                ),
                         ),
                       ),
-                    );
-                  },
-                );
-
-                return Scrollbar(
-                  child: SingleChildScrollView(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: pad,
-                      vertical: 16,
                     ),
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 1440),
-                        child: wide
-                            ? Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: <Widget>[
-                                  Expanded(child: main),
-                                  const SizedBox(width: 26),
-                                  SizedBox(width: 356, child: sidebar),
-                                ],
-                              )
-                            : Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: <Widget>[
-                                  main,
-                                  const SizedBox(height: 26),
-                                  sidebar,
-                                ],
-                              ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _WatchBar extends StatelessWidget {
-  const _WatchBar({required this.onBack});
-
-  final VoidCallback onBack;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-
-    return Container(
-      height: 58,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: p.surface,
-        border: Border(bottom: BorderSide(color: p.border)),
-      ),
-      child: Row(
-        children: <Widget>[
-          IconButton(
-            onPressed: onBack,
-            icon: Icon(Icons.arrow_back_rounded, color: p.textPrimary),
-            tooltip: 'Quay lại',
-          ),
-          const SizedBox(width: 2),
-          Container(
-            width: 32,
-            height: 23,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: <Color>[Color(0xFFFF2D45), Color(0xFFD10E28)],
+                  );
+                },
               ),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: const Text(
-              'PTK',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 10,
-                fontWeight: FontWeight.w900,
-                height: 1,
-              ),
-            ),
-          ),
-          const SizedBox(width: 6),
-          Text.rich(
-            TextSpan(
-              children: <InlineSpan>[
-                TextSpan(
-                  text: 'TIK',
-                  style: TextStyle(color: p.brandRed),
-                ),
-                TextSpan(
-                  text: 'TUBE',
-                  style: TextStyle(color: p.textPrimary),
-                ),
-              ],
-            ),
-            style: const TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w900,
-              letterSpacing: -0.6,
-              height: 1,
             ),
           ),
         ],
@@ -425,12 +362,13 @@ class _MainColumn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+    final bool compact = MediaQuery.sizeOf(context).width < 700;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         ClipRRect(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(compact ? 8 : 12),
           child: Stack(
             children: <Widget>[
               VideoSurface(video: video),
@@ -476,11 +414,11 @@ class _MainColumn extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 14),
+        SizedBox(height: compact ? 12 : 14),
         Text(
           video.title,
           style: TextStyle(
-            fontSize: 19,
+            fontSize: compact ? 17.5 : 19,
             fontWeight: FontWeight.w800,
             letterSpacing: -0.3,
             color: p.textPrimary,
@@ -490,7 +428,7 @@ class _MainColumn extends StatelessWidget {
         const SizedBox(height: 12),
         Row(
           children: <Widget>[
-            ChannelAvatar(video: video, size: 42),
+            ChannelAvatar(video: video, size: compact ? 38 : 42),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -518,12 +456,13 @@ class _MainColumn extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             AppPill(
               label: subscribed ? 'Đã đăng ký' : 'Đăng ký',
               height: 32,
               fontSize: 11.5,
               fontWeight: FontWeight.w700,
+              padding: const EdgeInsets.symmetric(horizontal: 13),
               gradient: subscribed ? null : p.ctaGradient,
               background: subscribed ? p.chip : null,
               foreground: subscribed ? p.textPrimary : Colors.white,
@@ -531,54 +470,64 @@ class _MainColumn extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: <Widget>[
-            AppPill(
-              label: '$likeCount',
-              icon: liked
-                  ? Icons.favorite_rounded
-                  : Icons.favorite_border_rounded,
-              height: 32,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
-              background: p.surface,
-              borderColor: p.border,
-              foreground: liked ? p.brandRed : p.textPrimary,
-              onTap: onToggleLike,
-            ),
-            AppPill(
-              label: 'Chia sẻ',
-              icon: Icons.ios_share_rounded,
-              height: 32,
-              fontSize: 11.5,
-              background: p.surface,
-              borderColor: p.border,
-              onTap: () => onNotify('Đã sao chép liên kết video.'),
-            ),
-            AppPill(
-              label: 'Tải xuống',
-              icon: Icons.file_download_outlined,
-              height: 32,
-              fontSize: 11.5,
-              background: p.surface,
-              borderColor: p.border,
-              onTap: () => onNotify('Đang chuẩn bị tải video...'),
-            ),
-            AppPill(
-              label: 'Báo cáo',
-              icon: Icons.flag_outlined,
-              height: 32,
-              fontSize: 11.5,
-              background: p.surface,
-              borderColor: p.border,
-              foreground: p.brandRed,
-              onTap: () => onNotify('Đã gửi báo cáo video.'),
-            ),
-          ],
-        ),
+        SizedBox(height: compact ? 12 : 12),
+        if (compact)
+          _WatchActions(
+            liked: liked,
+            likeCount: likeCount,
+            onToggleLike: onToggleLike,
+            onShare: () => onNotify('Đã sao chép liên kết video.'),
+            onDownload: () => onNotify('Đang chuẩn bị tải video...'),
+            onReport: () => onNotify('Đã gửi báo cáo video.'),
+          )
+        else
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              AppPill(
+                label: '$likeCount',
+                icon: liked
+                    ? Icons.favorite_rounded
+                    : Icons.favorite_border_rounded,
+                height: 32,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                background: p.surface,
+                borderColor: p.border,
+                foreground: liked ? p.brandRed : p.textPrimary,
+                onTap: onToggleLike,
+              ),
+              AppPill(
+                label: 'Chia sẻ',
+                icon: Icons.ios_share_rounded,
+                height: 32,
+                fontSize: 11.5,
+                background: p.surface,
+                borderColor: p.border,
+                onTap: () => onNotify('Đã sao chép liên kết video.'),
+              ),
+              AppPill(
+                label: 'Tải xuống',
+                icon: Icons.file_download_outlined,
+                height: 32,
+                fontSize: 11.5,
+                background: p.surface,
+                borderColor: p.border,
+                onTap: () => onNotify('Đang chuẩn bị tải video...'),
+              ),
+              AppPill(
+                label: 'Báo cáo',
+                icon: Icons.flag_outlined,
+                height: 32,
+                fontSize: 11.5,
+                background: p.surface,
+                borderColor: p.border,
+                foreground: p.brandRed,
+                onTap: () => onNotify('Đã gửi báo cáo video.'),
+              ),
+            ],
+          ),
         const SizedBox(height: 14),
         Text(
           '${video.viewsLabel} · ${video.date}',
@@ -680,6 +629,149 @@ class _MainColumn extends StatelessWidget {
       ],
     );
   }
+}
+
+class _WatchActions extends StatelessWidget {
+  const _WatchActions({
+    required this.liked,
+    required this.likeCount,
+    required this.onToggleLike,
+    required this.onShare,
+    required this.onDownload,
+    required this.onReport,
+  });
+
+  final bool liked;
+  final int likeCount;
+  final VoidCallback onToggleLike;
+  final VoidCallback onShare;
+  final VoidCallback onDownload;
+  final VoidCallback onReport;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      decoration: BoxDecoration(
+        color: p.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: p.border),
+      ),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: _WatchAction(
+              icon: liked
+                  ? Icons.favorite_rounded
+                  : Icons.favorite_border_rounded,
+              label: likeCount > 0 ? _shortCount(likeCount) : 'Thích',
+              active: liked,
+              onTap: onToggleLike,
+            ),
+          ),
+          _ActionDivider(color: p.border),
+          Expanded(
+            child: _WatchAction(
+              icon: Icons.ios_share_rounded,
+              label: 'Chia sẻ',
+              onTap: onShare,
+            ),
+          ),
+          _ActionDivider(color: p.border),
+          Expanded(
+            child: _WatchAction(
+              icon: Icons.file_download_outlined,
+              label: 'Tải xuống',
+              onTap: onDownload,
+            ),
+          ),
+          _ActionDivider(color: p.border),
+          Expanded(
+            child: _WatchAction(
+              icon: Icons.flag_outlined,
+              label: 'Báo cáo',
+              danger: true,
+              onTap: onReport,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WatchAction extends StatelessWidget {
+  const _WatchAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.active = false,
+    this.danger = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool active;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final Color color = danger
+        ? p.brandRed
+        : active
+        ? p.brandRed
+        : p.textPrimary;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(icon, size: 20, color: color),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w600,
+                color: danger ? p.brandRed : p.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionDivider extends StatelessWidget {
+  const _ActionDivider({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(width: 1, height: 26, color: color);
+  }
+}
+
+String _shortCount(int value) {
+  if (value >= 1000000) {
+    return '${(value / 1000000).toStringAsFixed(1).replaceAll('.', ',')} Tr';
+  }
+  if (value >= 1000) {
+    return '${(value / 1000).toStringAsFixed(1).replaceAll('.', ',')} N';
+  }
+  return '$value';
 }
 
 class _CommentTile extends StatelessWidget {
@@ -841,6 +933,7 @@ class _RelatedTileState extends State<_RelatedTile> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+    final bool compact = MediaQuery.sizeOf(context).width < 700;
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -860,7 +953,7 @@ class _RelatedTileState extends State<_RelatedTile> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               SizedBox(
-                width: 136,
+                width: compact ? 120 : 136,
                 child: VideoThumb(
                   video: widget.video,
                   radius: 5,
