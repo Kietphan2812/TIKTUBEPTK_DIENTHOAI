@@ -49,6 +49,9 @@ class _QuickWatchPageState extends State<QuickWatchPage> {
   bool _failed = false;
   bool _pausedByUser = false;
   bool _captionExpanded = false;
+  bool _isCover = false;
+  bool _showFitHint = false;
+  Timer? _fitHintTimer;
 
   String? get _url => widget.video.videoUrl;
 
@@ -168,8 +171,20 @@ class _QuickWatchPageState extends State<QuickWatchPage> {
     });
   }
 
+  void _toggleFitMode() {
+    setState(() {
+      _isCover = !_isCover;
+      _showFitHint = true;
+    });
+    _fitHintTimer?.cancel();
+    _fitHintTimer = Timer(const Duration(milliseconds: 1400), () {
+      if (mounted) setState(() => _showFitHint = false);
+    });
+  }
+
   @override
   void dispose() {
+    _fitHintTimer?.cancel();
     _reportProgress();
     _controller?.removeListener(_onPlayerChanged);
     _controller?.dispose();
@@ -193,6 +208,7 @@ class _QuickWatchPageState extends State<QuickWatchPage> {
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: _togglePlay,
+              onDoubleTap: _toggleFitMode,
             ),
           ),
           Positioned.fill(
@@ -233,6 +249,36 @@ class _QuickWatchPageState extends State<QuickWatchPage> {
                 ),
               ),
             ),
+          if (_showFitHint)
+            Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.78),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Icon(
+                      _isCover ? Icons.fullscreen_rounded : Icons.fit_screen_rounded,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _isCover ? 'Phóng to đầy màn hình' : 'Tỷ lệ gốc người đăng (không cắt)',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           Positioned(
             left: 14,
             right: 92,
@@ -241,11 +287,13 @@ class _QuickWatchPageState extends State<QuickWatchPage> {
               video: video,
               expanded: _captionExpanded,
               muted: widget.muted,
+              isCover: _isCover,
               onToggleExpanded: () {
                 setState(() => _captionExpanded = !_captionExpanded);
               },
               onFollow: widget.onFollow,
               onToggleMute: widget.onToggleMute,
+              onToggleFit: _toggleFitMode,
             ),
           ),
           Positioned(
@@ -288,28 +336,63 @@ class _QuickWatchPageState extends State<QuickWatchPage> {
         controller.value.isInitialized) {
       final Size size = controller.value.size;
       if (size.width > 0 && size.height > 0) {
-        return SizedBox.expand(
-          child: FittedBox(
-            fit: BoxFit.cover,
-            child: SizedBox(
-              width: size.width,
-              height: size.height,
-              child: VideoPlayer(controller),
-            ),
-          ),
+        final double aspect = controller.value.aspectRatio > 0
+            ? controller.value.aspectRatio
+            : (size.width / size.height);
+
+        return Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            // Nền phía sau: ambient backdrop mờ nhẹ từ thumbnail của video để không bị viền đen thô
+            if ((widget.video.thumbnailUrl ?? '').trim().isNotEmpty)
+              Positioned.fill(
+                child: Opacity(
+                  opacity: 0.28,
+                  child: Image.network(
+                    widget.video.thumbnailUrl!,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+            // Khung video hiển thị:
+            // Mặc định tự động điều chỉnh theo đúng tỷ lệ gốc người đăng tải, không bao giờ bị cắt xén.
+            _isCover
+                ? SizedBox.expand(
+                    child: FittedBox(
+                      fit: BoxFit.cover,
+                      child: SizedBox(
+                        width: size.width,
+                        height: size.height,
+                        child: VideoPlayer(controller),
+                      ),
+                    ),
+                  )
+                : Center(
+                    child: AspectRatio(
+                      aspectRatio: aspect,
+                      child: VideoPlayer(controller),
+                    ),
+                  ),
+          ],
         );
       }
     }
 
-    return _Poster(video: widget.video, failed: _failed);
+    return _Poster(video: widget.video, failed: _failed, isCover: _isCover);
   }
 }
 
 class _Poster extends StatelessWidget {
-  const _Poster({required this.video, required this.failed});
+  const _Poster({
+    required this.video,
+    required this.failed,
+    this.isCover = false,
+  });
 
   final Video video;
   final bool failed;
+  final bool isCover;
 
   @override
   Widget build(BuildContext context) {
@@ -329,12 +412,27 @@ class _Poster extends StatelessWidget {
             ),
           ),
         ),
-        if ((video.thumbnailUrl ?? '').trim().isNotEmpty)
-          Image.network(
-            video.thumbnailUrl!,
-            fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => const SizedBox.shrink(),
+        if ((video.thumbnailUrl ?? '').trim().isNotEmpty) ...<Widget>[
+          // Nền mờ phía sau
+          Positioned.fill(
+            child: Opacity(
+              opacity: 0.28,
+              child: Image.network(
+                video.thumbnailUrl!,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => const SizedBox.shrink(),
+              ),
+            ),
           ),
+          // Ảnh thumbnail hiển thị theo đúng tỷ lệ gốc hoặc cover
+          Center(
+            child: Image.network(
+              video.thumbnailUrl!,
+              fit: isCover ? BoxFit.cover : BoxFit.contain,
+              errorBuilder: (_, _, _) => const SizedBox.shrink(),
+            ),
+          ),
+        ],
         if (!failed && (video.videoUrl ?? '').trim().isNotEmpty)
           Center(
             child: Container(
@@ -376,17 +474,21 @@ class _Caption extends StatelessWidget {
     required this.video,
     required this.expanded,
     required this.muted,
+    required this.isCover,
     required this.onToggleExpanded,
     required this.onFollow,
     required this.onToggleMute,
+    required this.onToggleFit,
   });
 
   final Video video;
   final bool expanded;
   final bool muted;
+  final bool isCover;
   final VoidCallback onToggleExpanded;
   final VoidCallback onFollow;
   final VoidCallback onToggleMute;
+  final VoidCallback onToggleFit;
 
   String get _handle {
     final String value = video.handle.trim();
@@ -396,14 +498,19 @@ class _Caption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool canExpand = video.description.trim().length > 80;
     final String reason = video.recommendationLabel;
+    final bool hasExtra = video.description.trim().isNotEmpty ||
+        video.category.trim().isNotEmpty ||
+        reason.isNotEmpty ||
+        video.tags.isNotEmpty;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
+        // Tác giả & Theo dõi
         Row(
+          mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             Flexible(
               child: Text(
@@ -412,9 +519,9 @@ class _Caption extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 15,
+                  fontSize: 14.5,
                   fontWeight: FontWeight.w800,
-                  shadows: <Shadow>[Shadow(blurRadius: 6, color: Colors.black54)],
+                  shadows: <Shadow>[Shadow(blurRadius: 6, color: Colors.black87)],
                 ),
               ),
             ),
@@ -424,93 +531,131 @@ class _Caption extends StatelessWidget {
             ],
           ],
         ),
-        const SizedBox(height: 7),
-        Text(
-          video.title,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 14,
-            height: 1.25,
-            fontWeight: FontWeight.w600,
-            shadows: <Shadow>[Shadow(blurRadius: 6, color: Colors.black54)],
-          ),
-        ),
-        if (video.description.trim().isNotEmpty) ...<Widget>[
-          const SizedBox(height: 5),
-          Text(
-            video.description.trim(),
-            maxLines: expanded ? 6 : 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.88),
-              fontSize: 12,
-              height: 1.32,
-              shadows: const <Shadow>[
-                Shadow(blurRadius: 6, color: Colors.black54),
-              ],
+        const SizedBox(height: 5),
+
+        // Tiêu đề & nút Xem thêm / Thu gọn
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                video.title,
+                maxLines: expanded ? 3 : 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13.5,
+                  height: 1.25,
+                  fontWeight: FontWeight.w600,
+                  shadows: <Shadow>[Shadow(blurRadius: 6, color: Colors.black87)],
+                ),
+              ),
             ),
+            if (hasExtra) ...<Widget>[
+              const SizedBox(width: 6),
+              GestureDetector(
+                onTap: onToggleExpanded,
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Text(
+                        expanded ? 'Thu gọn' : 'Xem thêm',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      Icon(
+                        expanded
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
+                        size: 14,
+                        color: Colors.white,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+
+        // Phần thông tin mở rộng (chỉ hiện khi người dùng bấm Xem thêm)
+        if (expanded) ...<Widget>[
+          if (video.description.trim().isNotEmpty) ...<Widget>[
+            const SizedBox(height: 5),
+            Text(
+              video.description.trim(),
+              maxLines: 5,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.9),
+                fontSize: 12,
+                height: 1.3,
+                shadows: const <Shadow>[Shadow(blurRadius: 6, color: Colors.black87)],
+              ),
+            ),
+          ],
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 5,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: <Widget>[
+              _MetaPill(
+                icon: Icons.play_arrow_rounded,
+                label: '${_compactNumber(video.views)} lượt xem',
+              ),
+              if (reason.isNotEmpty)
+                _MetaPill(icon: Icons.auto_awesome_rounded, label: reason),
+              if (video.category.trim().isNotEmpty)
+                _MetaPill(
+                  icon: Icons.tag_rounded,
+                  label: video.category,
+                  maxWidth: 150,
+                ),
+            ],
           ),
-          if (canExpand)
-            GestureDetector(
-              onTap: onToggleExpanded,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 3),
-                child: Text(
-                  expanded ? 'Thu gọn' : 'Xem thêm',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
+          if (video.tags.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 6),
+            SizedBox(
+              height: 22,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: video.tags.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 6),
+                itemBuilder: (_, int index) => Text(
+                  '#${video.tags[index]}',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    shadows: const <Shadow>[
+                      Shadow(blurRadius: 4, color: Colors.black87),
+                    ],
                   ),
                 ),
               ),
             ),
-        ],
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 6,
-          runSpacing: 5,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: <Widget>[
-            _MetaPill(
-              icon: Icons.play_arrow_rounded,
-              label: '${_compactNumber(video.views)} lượt xem',
-            ),
-            if (reason.isNotEmpty)
-              _MetaPill(icon: Icons.auto_awesome_rounded, label: reason),
-            if (video.category.trim().isNotEmpty)
-              _MetaPill(
-                icon: Icons.tag_rounded,
-                label: video.category,
-                maxWidth: 150,
-              ),
           ],
-        ),
-        if (video.tags.isNotEmpty) ...<Widget>[
-          const SizedBox(height: 6),
-          SizedBox(
-            height: 24,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: video.tags.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 6),
-              itemBuilder: (_, int index) => Text(
-                '#${video.tags[index]}',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.82),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
         ],
-        const SizedBox(height: 8),
+
+        const SizedBox(height: 6),
+
+        // Hàng âm thanh
         Row(
           children: <Widget>[
-            const Icon(Icons.music_note_rounded, color: Colors.white, size: 14),
+            const Icon(Icons.music_note_rounded, color: Colors.white, size: 13),
             const SizedBox(width: 4),
             Flexible(
               child: Text(
@@ -519,8 +664,9 @@ class _Caption extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 11.5,
+                  fontSize: 11,
                   fontWeight: FontWeight.w500,
+                  shadows: <Shadow>[Shadow(blurRadius: 6, color: Colors.black87)],
                 ),
               ),
             ),
@@ -535,7 +681,27 @@ class _Caption extends StatelessWidget {
                   child: Icon(
                     muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
                     color: Colors.white,
-                    size: 17,
+                    size: 16,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Tooltip(
+              message: isCover
+                  ? 'Đang phóng to (chạm để xem tỷ lệ gốc)'
+                  : 'Đang tỷ lệ gốc (chạm để phóng to đầy hình)',
+              child: InkResponse(
+                onTap: onToggleFit,
+                radius: 18,
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Icon(
+                    isCover
+                        ? Icons.fit_screen_rounded
+                        : Icons.crop_free_rounded,
+                    color: Colors.white,
+                    size: 16,
                   ),
                 ),
               ),

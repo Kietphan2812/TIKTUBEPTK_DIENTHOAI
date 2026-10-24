@@ -8,12 +8,14 @@ import 'package:video_player/video_player.dart';
 import '../data/api_client.dart';
 import '../data/sample_data.dart';
 import '../data/tiktube_api.dart';
+import '../models/video.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_pill.dart';
 import '../widgets/dashed_box.dart';
 import '../widgets/platform_video_controller.dart';
 import '../widgets/section_top_bar.dart';
 import 'account_screen.dart';
+import 'quick_upload_screen.dart';
 import 'stats_screen.dart';
 
 class UploadScreen extends StatefulWidget {
@@ -309,6 +311,40 @@ class _UploadScreenState extends State<UploadScreen> {
         .push(MaterialPageRoute<void>(builder: (_) => StatsScreen(api: _api)));
   }
 
+  Future<void> _handleQuickUpload() async {
+    if (_uploading) return;
+    if (_bytes == null || _file == null) {
+      final Video? video = await Navigator.of(context).push<Video>(
+        MaterialPageRoute<Video>(
+          builder: (_) => QuickUploadScreen(api: _api),
+        ),
+      );
+      if (video != null && mounted) {
+        Navigator.of(context).pop(true);
+      }
+      return;
+    }
+
+    if (_title.text.trim().isEmpty) {
+      _title.text = _titleFromFilename(_file!.name);
+    }
+    if (_tags.isEmpty && _suggestedTags.isNotEmpty) {
+      for (final tag in _suggestedTags.take(4)) {
+        _addSuggestedTag(tag);
+      }
+    }
+    await _submit();
+  }
+
+  static String _titleFromFilename(String name) {
+    var clean = name.trim();
+    final dot = clean.lastIndexOf('.');
+    if (dot > 0) clean = clean.substring(0, dot);
+    clean = clean.replaceAll(RegExp(r'[_\-]+'), ' ').trim();
+    if (clean.isEmpty) return 'Video mới';
+    return clean[0].toUpperCase() + clean.substring(1);
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
@@ -377,6 +413,7 @@ class _UploadScreenState extends State<UploadScreen> {
                               onCancel: _uploading
                                   ? null
                                   : () => Navigator.of(context).maybePop(),
+                              onQuickUpload: _handleQuickUpload,
                               onSubmit: _submit,
                               onCover: () => _notify(
                                 'Ảnh bìa sẽ được Cloudinary tạo tự động từ video.',
@@ -452,6 +489,7 @@ class _UploadForm extends StatelessWidget {
     required this.onAddSuggestedTag,
     required this.onRetryTags,
     required this.onCancel,
+    required this.onQuickUpload,
     required this.onSubmit,
     required this.onCover,
   });
@@ -484,6 +522,7 @@ class _UploadForm extends StatelessWidget {
   final ValueChanged<String> onAddSuggestedTag;
   final VoidCallback onRetryTags;
   final VoidCallback? onCancel;
+  final VoidCallback onQuickUpload;
   final VoidCallback onSubmit;
   final VoidCallback onCover;
 
@@ -520,7 +559,9 @@ class _UploadForm extends StatelessWidget {
             'Đăng video vào tài khoản của bạn',
             style: TextStyle(fontSize: 12, color: p.textSecondary),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
+          _QuickUploadBanner(onTap: onQuickUpload),
+          const SizedBox(height: 14),
           MouseRegion(
             cursor: SystemMouseCursors.click,
             child: GestureDetector(
@@ -776,6 +817,7 @@ class _UploadForm extends StatelessWidget {
           Row(
             children: <Widget>[
               Expanded(
+                flex: 2,
                 child: SizedBox(
                   height: 40,
                   child: OutlinedButton(
@@ -797,8 +839,36 @@ class _UploadForm extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
               Expanded(
+                flex: 3,
+                child: SizedBox(
+                  height: 40,
+                  child: OutlinedButton.icon(
+                    onPressed: uploading ? null : onQuickUpload,
+                    icon: Icon(Icons.bolt_rounded, size: 16, color: p.brandRed),
+                    label: Text(
+                      'Đăng nhanh',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: p.brandRed,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: p.brandRed,
+                      side: BorderSide(color: p.brandRed, width: 1.2),
+                      backgroundColor: p.brandRed.withValues(alpha: 0.05),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 3,
                 child: SizedBox(
                   height: 40,
                   child: FilledButton(
@@ -1930,3 +2000,90 @@ class _PhonePreview extends StatelessWidget {
     );
   }
 }
+
+class _QuickUploadBanner extends StatelessWidget {
+  const _QuickUploadBanner({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: p.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: p.border),
+          ),
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: p.brandRed.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.bolt_rounded, color: p.brandRed, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      'Đăng video nhanh',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: p.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Chọn video, tiêu đề tự điền từ tên tệp và đăng ngay với hashtag gợi ý.',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: p.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                decoration: BoxDecoration(
+                  color: p.brandRed,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Icon(Icons.bolt_rounded, size: 15, color: Colors.white),
+                    SizedBox(width: 4),
+                    Text(
+                      'Đăng nhanh',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+

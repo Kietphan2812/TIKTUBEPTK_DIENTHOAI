@@ -1,30 +1,16 @@
 import 'package:flutter/material.dart';
 
 import '../data/tiktube_api.dart';
-import '../models/video.dart';
 import '../theme/app_theme.dart';
-import 'quick_upload_screen.dart';
 import 'upload_screen.dart';
 
 enum UploadChoice { quick, tiktube }
 
-/// Mở luồng đăng video và trả về `true` nếu có video mới được tạo.
+/// Mở luồng đăng video: vào thẳng màn hình Đăng video (có nút Đăng nhanh bên trong).
 Future<bool> openUploadFlow(
   BuildContext context, {
   required TikTubeApi api,
 }) async {
-  final UploadChoice? choice = await showUploadChoiceSheet(context);
-  if (choice == null || !context.mounted) return false;
-
-  if (choice == UploadChoice.quick) {
-    final Video? video = await Navigator.of(context).push<Video>(
-      MaterialPageRoute<Video>(
-        builder: (_) => QuickUploadScreen(api: api),
-      ),
-    );
-    return video != null;
-  }
-
   final bool? uploaded = await Navigator.of(context).push<bool>(
     MaterialPageRoute<bool>(
       builder: (_) => UploadScreen(api: api),

@@ -9,6 +9,7 @@ import '../theme/app_theme.dart';
 import '../widgets/data_state.dart';
 import '../widgets/section_top_bar.dart';
 import '../widgets/video_thumb.dart';
+import '../widgets/views_area_chart.dart';
 import 'account_screen.dart';
 
 class StatsScreen extends StatefulWidget {
@@ -94,19 +95,6 @@ class _StatsScreenState extends State<StatsScreen> {
 
     final CreatorStats? stats = _stats;
     final List<DailyViews> daily = stats?.daily ?? const <DailyViews>[];
-    final int maxDaily = daily.fold<int>(
-      1,
-      (int max, DailyViews item) => item.views > max ? item.views : max,
-    );
-    final List<double> factors = daily
-        .map(
-          (DailyViews item) =>
-              item.views <= 0 ? 0.03 : (item.views / maxDaily).clamp(0.06, 1.0),
-        )
-        .toList();
-    final List<String> labels = daily
-        .map((DailyViews item) => _weekdayLabel(item.date))
-        .toList();
     final List<Video> videos = stats?.topVideos ?? const <Video>[];
 
     String compact(int value) => _formatCompact(value);
@@ -253,87 +241,10 @@ class _StatsScreenState extends State<StatsScreen> {
                                     },
                               ),
                               const SizedBox(height: 16),
-                              Container(
-                                width: double.infinity,
-                                padding: EdgeInsets.all(isMobile ? 14 : 18),
-                                decoration: BoxDecoration(
-                                  color: p.surface,
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: p.border),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: <Widget>[
-                                    Text(
-                                      'Lượt xem 7 ngày gần nhất',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w700,
-                                        color: p.textPrimary,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 16),
-                                    SizedBox(
-                                      height: 148,
-                                      child: Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.end,
-                                        children: <Widget>[
-                                          for (
-                                            int i = 0;
-                                            i < factors.length;
-                                            i++
-                                          )
-                                            Expanded(
-                                              child: Padding(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 6,
-                                                    ),
-                                                child: Column(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.end,
-                                                  children: <Widget>[
-                                                    Container(
-                                                      height: 118 * factors[i],
-                                                      decoration: BoxDecoration(
-                                                        gradient:
-                                                            LinearGradient(
-                                                              begin: Alignment
-                                                                  .topCenter,
-                                                              end: Alignment
-                                                                  .bottomCenter,
-                                                              colors: <Color>[
-                                                                p.brandRed,
-                                                                p.brandPink,
-                                                              ],
-                                                            ),
-                                                        borderRadius:
-                                                            const BorderRadius.vertical(
-                                                              top:
-                                                                  Radius.circular(
-                                                                    5,
-                                                                  ),
-                                                            ),
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 8),
-                                                    Text(
-                                                      labels[i],
-                                                      style: TextStyle(
-                                                        fontSize: 9.5,
-                                                        color: p.textSecondary,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                              ViewsAreaChart(
+                                stats: stats,
+                                daily: daily,
+                                isMobile: isMobile,
                               ),
                               const SizedBox(height: 16),
                               _TopVideosCard(videos: videos, compact: isMobile),
@@ -604,12 +515,6 @@ class _ValueCell extends StatelessWidget {
   }
 }
 
-String _weekdayLabel(DateTime date) {
-  const List<String> names = <String>['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
-  final int index = date.weekday - 1;
-  if (index < 0 || index >= names.length) return '';
-  return names[index];
-}
 
 String _formatCompact(int value) {
   if (value >= 1000000) {

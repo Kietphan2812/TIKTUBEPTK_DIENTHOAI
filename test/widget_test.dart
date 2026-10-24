@@ -513,11 +513,8 @@ void main() {
 
     await tester.tap(find.text('Đăng'));
     await tester.pumpAndSettle();
-    expect(find.text('Đăng video nhanh'), findsOneWidget);
-    expect(find.text('Đăng video TIKTUBE'), findsOneWidget);
-    await tester.tap(find.text('Đăng video TIKTUBE'));
-    await tester.pumpAndSettle();
     expect(find.text('Tải video'), findsOneWidget);
+    expect(find.text('Đăng video nhanh'), findsOneWidget);
     expect(find.text('Chọn video để tải lên'), findsOneWidget);
     expect(find.text('Xem trước video'), findsOneWidget);
     expect(find.text('Thông tin video'), findsOneWidget);
@@ -763,11 +760,8 @@ void main() {
 
     await tester.tap(find.text('Đăng Video'));
     await tester.pumpAndSettle();
-    expect(find.text('Đăng video nhanh'), findsOneWidget);
-    expect(find.text('Đăng video TIKTUBE'), findsOneWidget);
-    await tester.tap(find.text('Đăng video TIKTUBE'));
-    await tester.pumpAndSettle();
     expect(find.text('Tải video'), findsOneWidget);
+    expect(find.text('Đăng video nhanh'), findsOneWidget);
     expect(find.text('Chọn video để tải lên'), findsOneWidget);
 
     await tester.tap(find.text('Quay lại'));
@@ -867,7 +861,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Nút đăng video mở lựa chọn đăng nhanh và TIKTUBE', (
+  testWidgets('Nút đăng video mở màn hình đăng video và có nút đăng nhanh bên trong', (
     WidgetTester tester,
   ) async {
     tester.view.physicalSize = const Size(360, 800);
@@ -882,8 +876,8 @@ void main() {
 
     await tester.tap(find.text('Đăng'));
     await tester.pumpAndSettle();
+    expect(find.text('Đăng video'), findsWidgets);
     expect(find.text('Đăng video nhanh'), findsOneWidget);
-    expect(find.text('Đăng video TIKTUBE'), findsOneWidget);
 
     await tester.tap(find.text('Đăng video nhanh'));
     await tester.pumpAndSettle();

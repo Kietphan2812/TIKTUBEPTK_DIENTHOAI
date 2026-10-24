@@ -706,18 +706,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       bottomNavigationBar: isMobile
           ? _MobileBottomNav(onTap: _handleAction)
           : null,
-      floatingActionButton: isMobile
-          ? FloatingActionButton.extended(
-              onPressed: () => unawaited(_openQuickWatch()),
-              backgroundColor: p.brandRed,
-              foregroundColor: Colors.white,
-              icon: const Icon(Icons.play_arrow_rounded),
-              label: const Text(
-                'Xem video',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
-            )
-          : null,
     );
   }
 }
@@ -1015,11 +1003,16 @@ class _MobileBottomNav extends StatelessWidget {
                   onTap: () => onTap('Trang chủ'),
                 ),
                 _MobileNavButton(
+                  icon: Icons.play_circle_outline_rounded,
+                  label: 'Xem video',
+                  onTap: () => onTap('Xem video'),
+                ),
+                _MobileUploadButton(onTap: () => onTap('Đăng Video')),
+                _MobileNavButton(
                   icon: Icons.subscriptions_outlined,
                   label: 'Đăng ký',
                   onTap: () => onTap('Đăng ký'),
                 ),
-                _MobileUploadButton(onTap: () => onTap('Đăng Video')),
                 _MobileNavButton(
                   icon: Icons.history_rounded,
                   label: 'Lịch sử',
