@@ -1,8 +1,9 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
 
 import '../data/api_client.dart';
 import '../data/sample_data.dart';
@@ -10,6 +11,7 @@ import '../data/tiktube_api.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_pill.dart';
 import '../widgets/dashed_box.dart';
+import '../widgets/platform_video_controller.dart';
 import '../widgets/section_top_bar.dart';
 import 'account_screen.dart';
 import 'stats_screen.dart';
@@ -30,18 +32,11 @@ class _UploadScreenState extends State<UploadScreen> {
   final TextEditingController _description = TextEditingController();
   final TextEditingController _hashtag = TextEditingController();
 
-  final List<String> _tags = <String>[
-    'remix',
-    'djhot',
-    'tiktok',
-    'tiktokremix',
-    'tiktokvn',
-    'mashup',
-    'dj',
-    'house',
-    'vietmix',
-    'nhacdj',
-  ];
+  final List<String> _tags = <String>[];
+  List<String> _categoryTags = <String>[];
+  bool _loadingTags = true;
+  String? _tagsError;
+  int _tagRequest = 0;
 
   String _category = 'Âm nhạc & sáng tạo';
   bool _kidsOnly = true;
@@ -58,6 +53,31 @@ class _UploadScreenState extends State<UploadScreen> {
     super.initState();
     _api = widget.api ?? ApiClient();
     _title.addListener(_onTitleChanged);
+    _loadCategoryTags();
+  }
+
+  Future<void> _loadCategoryTags([String? category]) async {
+    final String target = category ?? _category;
+    final int request = ++_tagRequest;
+    setState(() {
+      _loadingTags = true;
+      _tagsError = null;
+    });
+    try {
+      final List<String> tags = await _api.fetchTags(target);
+      if (!mounted || request != _tagRequest) return;
+      setState(() {
+        _categoryTags = tags;
+        _loadingTags = false;
+      });
+    } catch (_) {
+      if (!mounted || request != _tagRequest) return;
+      setState(() {
+        _categoryTags = const <String>[];
+        _tagsError = 'Không tải được thẻ tag cho danh mục này.';
+        _loadingTags = false;
+      });
+    }
   }
 
   void _onTitleChanged() {
@@ -75,13 +95,41 @@ class _UploadScreenState extends State<UploadScreen> {
     super.dispose();
   }
 
-  void _addTag() {
-    final value = _hashtag.text.trim().replaceAll('#', '');
+  List<String> get _suggestedTags {
+    final selected = _tags.map((String tag) => tag.toLowerCase()).toSet();
+    return _categoryTags
+        .where((String tag) => !selected.contains(tag.toLowerCase()))
+        .toList();
+  }
+
+  void _addSuggestedTag(String tag) {
+    final String value = tag.trim().replaceFirst(RegExp(r'^#+'), '').trim();
     if (value.isEmpty) return;
-    if (!_tags.contains(value)) {
+    if (!_tags.any(
+      (String item) => item.toLowerCase() == value.toLowerCase(),
+    )) {
       setState(() => _tags.add(value));
     }
+  }
+
+  void _addTag() {
+    final String value = _hashtag.text
+        .trim()
+        .replaceFirst(RegExp(r'^#+'), '')
+        .trim();
+    if (value.isEmpty) return;
+    _addSuggestedTag(value);
     _hashtag.clear();
+  }
+
+  void _changeCategory(String value) {
+    if (value == _category) return;
+    setState(() {
+      _category = value;
+      _tags.clear();
+      _categoryTags = const <String>[];
+    });
+    _loadCategoryTags(value);
   }
 
   void _notify(String message) {
@@ -302,7 +350,11 @@ class _UploadScreenState extends State<UploadScreen> {
                               descriptionController: _description,
                               hashtagController: _hashtag,
                               tags: _tags,
+                              suggestedTags: _suggestedTags,
                               category: _category,
+                              loadingTags: _loadingTags,
+                              tagsError: _tagsError,
+                              file: _file,
                               kidsOnly: _kidsOnly,
                               picked: _file != null,
                               fileName: _file?.name,
@@ -314,13 +366,14 @@ class _UploadScreenState extends State<UploadScreen> {
                               uploadRemainingLabel: _uploadRemainingLabel,
                               uploadComplete: _uploadComplete,
                               onPick: _pickVideo,
-                              onCategory: (String value) =>
-                                  setState(() => _category = value),
+                              onCategory: _changeCategory,
                               onKids: (bool value) =>
                                   setState(() => _kidsOnly = value),
                               onRemoveTag: (String tag) =>
                                   setState(() => _tags.remove(tag)),
                               onAddTag: _addTag,
+                              onAddSuggestedTag: _addSuggestedTag,
+                              onRetryTags: () => _loadCategoryTags(),
                               onCancel: _uploading
                                   ? null
                                   : () => Navigator.of(context).maybePop(),
@@ -332,7 +385,7 @@ class _UploadScreenState extends State<UploadScreen> {
 
                             final Widget preview = _PhonePreview(
                               title: _title.text.trim(),
-                              fileName: _file?.name,
+                              file: _file,
                               uploading: _uploading,
                             );
 
@@ -376,7 +429,11 @@ class _UploadForm extends StatelessWidget {
     required this.descriptionController,
     required this.hashtagController,
     required this.tags,
+    required this.suggestedTags,
     required this.category,
+    required this.loadingTags,
+    required this.tagsError,
+    required this.file,
     required this.kidsOnly,
     required this.picked,
     required this.fileName,
@@ -392,6 +449,8 @@ class _UploadForm extends StatelessWidget {
     required this.onKids,
     required this.onRemoveTag,
     required this.onAddTag,
+    required this.onAddSuggestedTag,
+    required this.onRetryTags,
     required this.onCancel,
     required this.onSubmit,
     required this.onCover,
@@ -401,7 +460,11 @@ class _UploadForm extends StatelessWidget {
   final TextEditingController descriptionController;
   final TextEditingController hashtagController;
   final List<String> tags;
+  final List<String> suggestedTags;
   final String category;
+  final bool loadingTags;
+  final String? tagsError;
+  final PlatformFile? file;
   final bool compact;
   final bool kidsOnly;
   final bool picked;
@@ -418,6 +481,8 @@ class _UploadForm extends StatelessWidget {
   final ValueChanged<bool> onKids;
   final ValueChanged<String> onRemoveTag;
   final VoidCallback onAddTag;
+  final ValueChanged<String> onAddSuggestedTag;
+  final VoidCallback onRetryTags;
   final VoidCallback? onCancel;
   final VoidCallback onSubmit;
   final VoidCallback onCover;
@@ -528,7 +593,7 @@ class _UploadForm extends StatelessWidget {
             const SizedBox(height: 16),
             _MobileVideoPreview(
               title: titleController.text.trim(),
-              fileName: fileName,
+              file: file,
               uploading: uploading,
             ),
           ],
@@ -591,13 +656,28 @@ class _UploadForm extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           const _Label('Thẻ tag'),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: <Widget>[
-              for (final String tag in tags)
-                _HashtagChip(label: tag, onRemove: () => onRemoveTag(tag)),
-            ],
+          Text(
+            'Gợi ý lấy từ danh mục “$category” trong SQL.',
+            style: TextStyle(fontSize: 10.5, color: p.textSecondary),
+          ),
+          const SizedBox(height: 8),
+          if (tags.isNotEmpty) ...<Widget>[
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: <Widget>[
+                for (final String tag in tags)
+                  _HashtagChip(label: tag, onRemove: () => onRemoveTag(tag)),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
+          _CategoryTagSuggestions(
+            tags: suggestedTags,
+            loading: loadingTags,
+            error: tagsError,
+            onAdd: onAddSuggestedTag,
+            onRetry: onRetryTags,
           ),
           const SizedBox(height: 10),
           Row(
@@ -611,7 +691,7 @@ class _UploadForm extends StatelessWidget {
                     style: TextStyle(fontSize: 12, color: p.textPrimary),
                     decoration: _decoration(
                       context,
-                      hint: 'Thêm tag (VD: #game)',
+                      hint: 'Thêm tag khác (VD: #game)',
                     ),
                   ),
                 ),
@@ -857,6 +937,131 @@ class _FormSectionHeader extends StatelessWidget {
   }
 }
 
+/// Gợi ý thẻ tag được tải từ bảng `the_tag` theo danh mục đang chọn.
+class _CategoryTagSuggestions extends StatelessWidget {
+  const _CategoryTagSuggestions({
+    required this.tags,
+    required this.loading,
+    required this.error,
+    required this.onAdd,
+    required this.onRetry,
+  });
+
+  final List<String> tags;
+  final bool loading;
+  final String? error;
+  final ValueChanged<String> onAdd;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+
+    if (loading) {
+      return Row(
+        children: <Widget>[
+          SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(
+              strokeWidth: 1.6,
+              color: p.brandRed,
+            ),
+          ),
+          const SizedBox(width: 7),
+          Text(
+            'Đang tải thẻ tag từ SQL...',
+            style: TextStyle(fontSize: 10.5, color: p.textSecondary),
+          ),
+        ],
+      );
+    }
+
+    if (error != null) {
+      return Row(
+        children: <Widget>[
+          Icon(Icons.info_outline_rounded, size: 14, color: p.brandRed),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              error!,
+              style: TextStyle(fontSize: 10.5, color: p.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: onRetry,
+            style: TextButton.styleFrom(
+              foregroundColor: p.brandRed,
+              textStyle: const TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              minimumSize: const Size(0, 26),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text('Thử lại'),
+          ),
+        ],
+      );
+    }
+
+    if (tags.isEmpty) {
+      return Text(
+        'Danh mục này chưa có thẻ tag trong SQL. Bạn vẫn có thể tự thêm.',
+        style: TextStyle(fontSize: 10.5, color: p.textSecondary),
+      );
+    }
+
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: <Widget>[
+        for (final String tag in tags)
+          _SuggestedHashtagChip(label: tag, onTap: () => onAdd(tag)),
+      ],
+    );
+  }
+}
+
+class _SuggestedHashtagChip extends StatelessWidget {
+  const _SuggestedHashtagChip({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(7, 4, 8, 4),
+          decoration: BoxDecoration(
+            color: p.surfaceAlt,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: p.border),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(Icons.add_rounded, size: 11, color: p.brandRed),
+              const SizedBox(width: 3),
+              Text(
+                '#$label',
+                style: TextStyle(fontSize: 10.5, color: p.textSecondary),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Khung xem trước gọn dành cho điện thoại.
 ///
 /// Bản desktop dùng mockup điện thoại bên phải form; trên màn hình nhỏ,
@@ -864,18 +1069,18 @@ class _FormSectionHeader extends StatelessWidget {
 class _MobileVideoPreview extends StatelessWidget {
   const _MobileVideoPreview({
     required this.title,
-    required this.fileName,
+    required this.file,
     required this.uploading,
   });
 
   final String title;
-  final String? fileName;
+  final PlatformFile? file;
   final bool uploading;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final bool hasFile = fileName != null;
+    final bool hasFile = file != null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -900,7 +1105,7 @@ class _MobileVideoPreview extends StatelessWidget {
             if (hasFile)
               Flexible(
                 child: Text(
-                  fileName!,
+                  file!.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,
@@ -927,19 +1132,22 @@ class _MobileVideoPreview extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: <Widget>[
-                  const DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: <Color>[
-                          Color(0xFF10232C),
-                          Color(0xFF3B2D61),
-                          Color(0xFF080808),
-                        ],
+                  if (file != null)
+                    _VideoPreviewPlayer(file: file!, title: title)
+                  else
+                    const DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: <Color>[
+                            Color(0xFF10232C),
+                            Color(0xFF3B2D61),
+                            Color(0xFF080808),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
                   Positioned(
                     left: 10,
                     top: 9,
@@ -963,79 +1171,45 @@ class _MobileVideoPreview extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 22),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          Container(
-                            width: 44,
-                            height: 44,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.14),
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.22),
+                  if (!hasFile)
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 22),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Container(
+                              width: 44,
+                              height: 44,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.14),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.22),
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.play_arrow_rounded,
+                                size: 25,
+                                color: Colors.white,
                               ),
                             ),
-                            child: Icon(
-                              uploading
-                                  ? Icons.cloud_upload_outlined
-                                  : Icons.play_arrow_rounded,
-                              size: 25,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            hasFile
-                                ? (title.isEmpty
-                                      ? 'Tiêu đề video của bạn'
-                                      : title)
-                                : 'Chọn video để xem trước',
-                            maxLines: 2,
-                            textAlign: TextAlign.center,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              height: 1.3,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  if (hasFile)
-                    Positioned(
-                      left: 10,
-                      right: 10,
-                      bottom: 8,
-                      child: Row(
-                        children: <Widget>[
-                          Icon(
-                            uploading
-                                ? Icons.cloud_upload_rounded
-                                : Icons.movie_outlined,
-                            size: 12,
-                            color: Colors.white54,
-                          ),
-                          const SizedBox(width: 5),
-                          Expanded(
-                            child: Text(
-                              fileName!,
-                              maxLines: 1,
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Chọn video để xem trước',
+                              maxLines: 2,
+                              textAlign: TextAlign.center,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 9.5,
-                                color: Colors.white54,
+                              style: TextStyle(
+                                fontSize: 12,
+                                height: 1.3,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                 ],
@@ -1312,21 +1486,297 @@ class _AgeOption extends StatelessWidget {
   }
 }
 
+class _VideoPreviewPlayer extends StatefulWidget {
+  const _VideoPreviewPlayer({required this.file, required this.title});
+
+  final PlatformFile file;
+  final String title;
+
+  @override
+  State<_VideoPreviewPlayer> createState() => _VideoPreviewPlayerState();
+}
+
+class _VideoPreviewPlayerState extends State<_VideoPreviewPlayer> {
+  VideoPlayerController? _controller;
+  Object? _error;
+  bool _muted = kIsWeb;
+  int _generation = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _open();
+  }
+
+  @override
+  void didUpdateWidget(covariant _VideoPreviewPlayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.file.uri != widget.file.uri ||
+        oldWidget.file.name != widget.file.name) {
+      _replace();
+    }
+  }
+
+  Future<void> _open() async {
+    final int generation = ++_generation;
+    final VideoPlayerController controller = createPlatformVideoController(
+      widget.file,
+    );
+    _controller = controller;
+    if (mounted) {
+      setState(() => _error = null);
+    }
+    try {
+      await controller.initialize();
+      if (!mounted || generation != _generation) {
+        await controller.dispose();
+        return;
+      }
+      await controller.setLooping(true);
+      try {
+        await controller.setVolume(_muted ? 0 : 1);
+        await controller.play();
+      } catch (_) {
+        // Autoplay có thể bị trình duyệt chặn; nút play vẫn dùng được.
+      }
+      if (mounted && generation == _generation) setState(() {});
+    } catch (error) {
+      if (!mounted || generation != _generation) {
+        await controller.dispose();
+        return;
+      }
+      if (identical(_controller, controller)) _controller = null;
+      setState(() => _error = error);
+      await controller.dispose();
+    }
+  }
+
+  void _replace() {
+    final VideoPlayerController? old = _controller;
+    _controller = null;
+    _generation++;
+    old?.dispose();
+    if (mounted) {
+      setState(() => _error = null);
+    }
+    _open();
+  }
+
+  @override
+  void dispose() {
+    _generation++;
+    final VideoPlayerController? controller = _controller;
+    _controller = null;
+    controller?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _togglePlay() async {
+    final VideoPlayerController? controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    if (controller.value.isPlaying) {
+      await controller.pause();
+    } else {
+      await controller.play();
+    }
+  }
+
+  Future<void> _toggleMute() async {
+    final VideoPlayerController? controller = _controller;
+    if (controller == null) return;
+    final bool muted = !_muted;
+    await controller.setVolume(muted ? 0 : 1);
+    if (mounted) setState(() => _muted = muted);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final VideoPlayerController? controller = _controller;
+
+    if (controller == null || !controller.value.isInitialized) {
+      if (_error != null) {
+        return _PreviewPlaybackError(title: widget.title);
+      }
+      return const ColoredBox(
+        color: Color(0xFF080808),
+        child: Center(
+          child: SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.white54,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return ValueListenableBuilder<VideoPlayerValue>(
+      valueListenable: controller,
+      builder: (BuildContext context, VideoPlayerValue value, Widget? _) {
+        if (value.hasError) {
+          return _PreviewPlaybackError(title: widget.title);
+        }
+        final Size size = value.size;
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _togglePlay(),
+          child: Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              const ColoredBox(color: Colors.black),
+              FittedBox(
+                fit: BoxFit.contain,
+                child: SizedBox(
+                  width: size.width > 0 ? size.width : 16,
+                  height: size.height > 0 ? size.height : 9,
+                  child: VideoPlayer(controller),
+                ),
+              ),
+              if (!value.isPlaying)
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 42,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.48),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.35),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.play_arrow_rounded,
+                      size: 26,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              Positioned(
+                top: 7,
+                right: 7,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: _toggleMute,
+                    child: Container(
+                      width: 27,
+                      height: 27,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.45),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        _muted
+                            ? Icons.volume_off_rounded
+                            : Icons.volume_up_rounded,
+                        size: 15,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: VideoProgressIndicator(
+                  controller,
+                  allowScrubbing: true,
+                  padding: const EdgeInsets.only(top: 6),
+                  colors: VideoProgressColors(
+                    playedColor: p.brandRed,
+                    bufferedColor: Colors.white24,
+                    backgroundColor: Colors.white12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PreviewPlaybackError extends StatelessWidget {
+  const _PreviewPlaybackError({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[
+            Color(0xFF10232C),
+            Color(0xFF3B2D61),
+            Color(0xFF080808),
+          ],
+        ),
+      ),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const Icon(
+                Icons.videocam_off_outlined,
+                size: 28,
+                color: Colors.white70,
+              ),
+              const SizedBox(height: 7),
+              const Text(
+                'Không phát được video này',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+              if (title.trim().isNotEmpty) ...<Widget>[
+                const SizedBox(height: 3),
+                Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 9.5, color: Colors.white54),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _PhonePreview extends StatelessWidget {
   const _PhonePreview({
     required this.title,
-    required this.fileName,
+    required this.file,
     required this.uploading,
   });
 
   final String title;
-  final String? fileName;
+  final PlatformFile? file;
   final bool uploading;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final hasFile = fileName != null;
+    final bool hasFile = file != null;
 
     return Container(
       width: 255,
@@ -1382,43 +1832,32 @@ class _PhonePreview extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Expanded(
-                    child: Container(
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        gradient: const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: <Color>[
-                            Color(0xFF1B3B4A),
-                            Color(0xFF7A5CC4),
-                            Color(0xFF0A0A0A),
-                          ],
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Stack(
+                        fit: StackFit.expand,
                         children: <Widget>[
-                          Icon(
-                            uploading
-                                ? Icons.cloud_upload_outlined
-                                : Icons.play_circle_outline_rounded,
-                            size: 46,
-                            color: Colors.white.withValues(alpha: 0.9),
-                          ),
-                          const SizedBox(height: 10),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Text(
-                              title.isEmpty ? 'Tiêu đề video' : title,
-                              maxLines: 2,
-                              textAlign: TextAlign.center,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                height: 1.3,
+                          _VideoPreviewPlayer(file: file!, title: title),
+                          Positioned(
+                            left: 8,
+                            top: 8,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.35),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: const Text(
+                                'XEM TRƯỚC',
+                                style: TextStyle(
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.6,
+                                  color: Colors.white70,
+                                ),
                               ),
                             ),
                           ),
@@ -1461,9 +1900,21 @@ class _PhonePreview extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   Text(
-                    fileName ?? '',
+                    title.isEmpty ? 'Tiêu đề video' : title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      height: 1.3,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    file!.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(

@@ -4,7 +4,7 @@ Bản dựng lại giao diện **TIKTUBE** (trang xem & chia sẻ video của PT
 kèm REST API viết bằng Dart, dùng chung database Neon với web app và lưu video trên
 Cloudinary.
 
-Phiên bản Android đang phát hành: **1.0.5+6** (APK cài trực tiếp, trỏ API
+Phiên bản Android đang phát hành: **1.0.6+7** (APK cài trực tiếp, trỏ API
 `https://tiktube-api.onrender.com`).
 
 ## Kiến trúc
@@ -54,6 +54,7 @@ Flutter ── gửi file ──► Dart server ── ký upload ──► Clou
 | Video từ kênh đã đăng ký | `video` + `dang_ky_kenh` — chỉ video đã duyệt của kênh đang theo dõi |
 | Xem video | `video`, `binh_luan`, `luot_thich`, `lich_su_xem`, `dang_ky_kenh` |
 | Đăng video | `POST /api/videos/upload` — file đi qua server, lưu Cloudinary, ghi `video` + `lich_su_dang_video` + `kiem_duyet_video` |
+| Gợi ý thẻ tag | `the_tag` + `danh_muc` — `GET /api/tags?category=...`, đổi danh mục sẽ tải lại đúng tag của danh mục đó |
 | Đăng ký kênh | `dang_ky_kenh` (kênh chính là `nguoi_dung`) |
 | Lịch sử | `lich_su_xem`; tab **Video đã đăng** đọc `video` của chính người dùng |
 | Thống kê | tổng hợp từ `video`, `luot_thich`, `binh_luan`, `lich_su_xem`; app cũng cập nhật `thong_ke` khi có xem/thích/bình luận |
@@ -66,6 +67,12 @@ lượt thích và bình luận đều là dữ liệu SQL thật.
 Video bị web từ chối vẫn hiện trong tab **Video đã đăng** của chủ video, kèm nhãn
 **Bị từ chối**; video chờ duyệt có nhãn **Chờ duyệt**. Trang chủ chỉ hiện video
 đã duyệt.
+
+Trong màn hình **Đăng video**, ngay sau khi chọn file, video tự phát trong khung
+xem trước (lặp lại, có thanh tiến trình và nút tắt/bật âm thanh; trên web tự phát
+ở chế độ tắt tiếng để đúng chính sách autoplay của trình duyệt). Danh sách thẻ
+tag bên dưới lấy từ `the_tag` theo `danh_muc` đang chọn, không dùng danh sách cố
+định; đổi danh mục sẽ xoá tag đã chọn và tải lại gợi ý của danh mục mới.
 
 ### Cách tính điểm xu hướng
 
@@ -196,6 +203,7 @@ người dùng thật trong Neon và tự động đăng nhập.
 | POST | `/api/auth/logout` | Xoá phiên hiện tại (gửi kèm Bearer token) |
 | GET | `/health` | Trạng thái API + Cloudinary |
 | GET | `/api/categories` | Danh mục |
+| GET | `/api/tags?category=...&limit=...` | Thẻ tag đã liên kết với danh mục trong `the_tag` |
 | GET | `/api/videos?limit=...` | Danh sách video đã duyệt |
 | GET | `/api/videos/trending?days=7&limit=12&category=...` | Bảng xếp hạng xu hướng từ SQL (kèm `trendScore`, `recentViews`) |
 | GET | `/api/videos/<id>` | Chi tiết video |
@@ -222,7 +230,7 @@ người dùng thật trong Neon và tự động đăng nhập.
 | GET | `/api/me` | Hồ sơ |
 | PATCH | `/api/me` | Cập nhật tên/email/tuổi |
 
-Các endpoint đọc công khai như `/api/videos`, `/api/categories`,
+Các endpoint đọc công khai như `/api/videos`, `/api/categories`, `/api/tags`,
 `/api/videos/trending`, `/api/videos/<id>` vẫn xem được khi chưa đăng nhập.
 Endpoint `/api/feed/subscriptions`, các endpoint ghi (upload, bình luận, like,
 view, đăng ký kênh) và dữ liệu riêng (lịch sử, uploads, stats, thông báo,
@@ -269,10 +277,10 @@ flutter build web --release
 cd server && dart analyze
 ```
 
-Hiện có 24 test: parse API, xu hướng + feed đăng ký, đăng nhập + Bearer token,
-trang chủ, trạng thái lỗi API, thống kê, tìm kiếm, responsive, điều hướng,
-xem video/bình luận, thông báo, upload tiến trình và luồng
-đăng nhập/đăng ký/đăng xuất.
+Hiện có 25 test: parse API, xu hướng + feed đăng ký, thẻ tag theo danh mục,
+đăng nhập + Bearer token, trang chủ, trạng thái lỗi API, thống kê, tìm kiếm,
+responsive, điều hướng, xem video/bình luận, thông báo, upload tiến trình và
+luồng đăng nhập/đăng ký/đăng xuất.
 
 ## Deploy API lên Render
 

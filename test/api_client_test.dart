@@ -69,32 +69,66 @@ void main() {
     expect(videos.single.viewsLabel, '1,2 N lượt xem');
   });
 
-  test('ApiClient.fetchTrendingVideos gửi bộ lọc và đọc điểm xu hướng', () async {
+  test(
+    'ApiClient.fetchTrendingVideos gửi bộ lọc và đọc điểm xu hướng',
+    () async {
+      final client = MockClient((http.Request request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, '/api/videos/trending');
+        expect(request.url.queryParameters['limit'], '8');
+        expect(request.url.queryParameters['days'], '7');
+        expect(request.url.queryParameters['category'], 'Gaming');
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'items': <Object?>[
+              <String, Object?>{
+                'id': 'trend-1',
+                'title': 'Video đang lên',
+                'channel': 'PTK',
+                'handle': '@ptk',
+                'views': 1200,
+                'date': '23/10/2026',
+                'durationSeconds': 65,
+                'category': 'Gaming',
+                'colors': <String>['#111111', '#222222'],
+                'isLive': false,
+                'trendScore': 812,
+                'recentViews': 4,
+              },
+            ],
+            'windowDays': 7,
+          }),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json; charset=utf-8',
+          },
+        );
+      });
+
+      final api = ApiClient(client: client, baseUrl: 'http://localhost:8787');
+      final videos = await api.fetchTrendingVideos(
+        limit: 8,
+        days: 7,
+        category: 'Gaming',
+      );
+
+      expect(videos, hasLength(1));
+      expect(videos.single.trendScore, 812);
+      expect(videos.single.recentViews, 4);
+    },
+  );
+
+  test('ApiClient.fetchTags lấy tag theo danh mục và bỏ dấu thăng', () async {
     final client = MockClient((http.Request request) async {
       expect(request.method, 'GET');
-      expect(request.url.path, '/api/videos/trending');
-      expect(request.url.queryParameters['limit'], '8');
-      expect(request.url.queryParameters['days'], '7');
-      expect(request.url.queryParameters['category'], 'Gaming');
+      expect(request.url.path, '/api/tags');
+      expect(request.url.queryParameters['category'], 'Giáo dục & kiến thức');
+      expect(request.url.queryParameters['limit'], '60');
       return http.Response(
         jsonEncode(<String, Object?>{
-          'items': <Object?>[
-            <String, Object?>{
-              'id': 'trend-1',
-              'title': 'Video đang lên',
-              'channel': 'PTK',
-              'handle': '@ptk',
-              'views': 1200,
-              'date': '23/10/2026',
-              'durationSeconds': 65,
-              'category': 'Gaming',
-              'colors': <String>['#111111', '#222222'],
-              'isLive': false,
-              'trendScore': 812,
-              'recentViews': 4,
-            },
-          ],
-          'windowDays': 7,
+          'items': <String>['#giaoduc', '#hoctap', 'learning'],
+          'count': 3,
+          'category': 'Giáo dục & kiến thức',
         }),
         200,
         headers: <String, String>{
@@ -104,15 +138,9 @@ void main() {
     });
 
     final api = ApiClient(client: client, baseUrl: 'http://localhost:8787');
-    final videos = await api.fetchTrendingVideos(
-      limit: 8,
-      days: 7,
-      category: 'Gaming',
-    );
+    final tags = await api.fetchTags('Giáo dục & kiến thức');
 
-    expect(videos, hasLength(1));
-    expect(videos.single.trendScore, 812);
-    expect(videos.single.recentViews, 4);
+    expect(tags, <String>['giaoduc', 'hoctap', 'learning']);
   });
 
   test('ApiClient.fetchSubscriptionFeed gắn Bearer và đọc feed', () async {
@@ -179,53 +207,56 @@ void main() {
     );
   });
 
-  test('ApiClient đăng nhập, nhận token và gắn Bearer vào request sau đó', () async {
-    final client = MockClient((http.Request request) async {
-      if (request.url.path == '/api/auth/login') {
-        expect(request.method, 'POST');
-        final body = jsonDecode(request.body) as Map<String, dynamic>;
-        expect(body['login'], 'kiepthan4');
-        expect(body['password'], 'TikTube@123');
-        return http.Response(
-          jsonEncode(<String, Object?>{
-            'token': 'session-token-123',
-            'profile': <String, Object?>{
-              'userKey': 'kiepthan4',
-              'name': 'kiepthan4',
-              'email': 'kiepthan4444@gmail.com',
-              'age': 18,
+  test(
+    'ApiClient đăng nhập, nhận token và gắn Bearer vào request sau đó',
+    () async {
+      final client = MockClient((http.Request request) async {
+        if (request.url.path == '/api/auth/login') {
+          expect(request.method, 'POST');
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          expect(body['login'], 'kiepthan4');
+          expect(body['password'], 'TikTube@123');
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'token': 'session-token-123',
+              'profile': <String, Object?>{
+                'userKey': 'kiepthan4',
+                'name': 'kiepthan4',
+                'email': 'kiepthan4444@gmail.com',
+                'age': 18,
+              },
+            }),
+            200,
+            headers: <String, String>{
+              'content-type': 'application/json; charset=utf-8',
             },
-          }),
+          );
+        }
+
+        expect(request.url.path, '/api/videos');
+        expect(request.headers['authorization'], 'Bearer session-token-123');
+        return http.Response(
+          jsonEncode(<String, Object?>{'items': <Object?>[]}),
           200,
           headers: <String, String>{
             'content-type': 'application/json; charset=utf-8',
           },
         );
-      }
+      });
 
-      expect(request.url.path, '/api/videos');
-      expect(request.headers['authorization'], 'Bearer session-token-123');
-      return http.Response(
-        jsonEncode(<String, Object?>{'items': <Object?>[]}),
-        200,
-        headers: <String, String>{
-          'content-type': 'application/json; charset=utf-8',
-        },
+      final api = ApiClient(client: client, baseUrl: 'http://localhost:8787');
+      final AuthSession session = await api.login(
+        login: 'kiepthan4',
+        password: 'TikTube@123',
       );
-    });
 
-    final api = ApiClient(client: client, baseUrl: 'http://localhost:8787');
-    final AuthSession session = await api.login(
-      login: 'kiepthan4',
-      password: 'TikTube@123',
-    );
+      expect(session.token, 'session-token-123');
+      expect(session.profile.name, 'kiepthan4');
 
-    expect(session.token, 'session-token-123');
-    expect(session.profile.name, 'kiepthan4');
-
-    api.setAuthToken(session.token);
-    await api.fetchVideos();
-  });
+      api.setAuthToken(session.token);
+      await api.fetchVideos();
+    },
+  );
 
   test('ApiClient đọc thông báo và gắn Bearer khi đánh dấu đã đọc', () async {
     var markedAll = false;

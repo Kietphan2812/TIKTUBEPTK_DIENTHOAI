@@ -85,6 +85,30 @@ class ApiClient implements TikTubeApi {
   }
 
   @override
+  Future<List<String>> fetchTags(String category) async {
+    final data = await _request(
+      'GET',
+      _uri('/api/tags', <String, String>{
+        'category': category.trim(),
+        'limit': '60',
+      }),
+    );
+    final items = (data['items'] as List<dynamic>? ?? const <dynamic>[]);
+    final tags = <String>[];
+    final seen = <String>{};
+    for (final item in items) {
+      final String name = item
+          .toString()
+          .trim()
+          .replaceFirst(RegExp(r'^#+'), '')
+          .trim();
+      if (name.isEmpty || !seen.add(name.toLowerCase())) continue;
+      tags.add(name);
+    }
+    return tags;
+  }
+
+  @override
   Future<List<Comment>> fetchComments(String videoId) async {
     final data = await _request('GET', _uri('/api/videos/$videoId/comments'));
     final items = (data['items'] as List<dynamic>? ?? const <dynamic>[]);

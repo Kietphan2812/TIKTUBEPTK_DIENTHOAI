@@ -29,6 +29,20 @@ class _OfflineApi implements TikTubeApi {
   }) async => kTrendingVideos;
 
   @override
+  Future<List<String>> fetchTags(String category) async {
+    switch (category) {
+      case 'Giáo dục & kiến thức':
+        return const <String>['giaoduc', 'hoctap', 'learning'];
+      case 'Gaming':
+        return const <String>['gaming', 'gameplay', 'esports'];
+      case 'Âm nhạc & sáng tạo':
+        return const <String>['remix', 'music', 'cover'];
+      default:
+        return const <String>['tiktok'];
+    }
+  }
+
+  @override
   Future<List<Comment>> fetchComments(String videoId) async => kSampleComments;
 
   @override
@@ -414,9 +428,21 @@ void main() {
     expect(find.text('Xem trước video'), findsOneWidget);
     expect(find.text('Thông tin video'), findsOneWidget);
     expect(find.text('Thẻ tag'), findsOneWidget);
+    expect(find.text('#remix'), findsOneWidget);
+    expect(find.text('#giaoduc'), findsNothing);
     expect(find.text('Cài đặt video'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Đăng video'), findsOneWidget);
     expect(tester.takeException(), isNull);
+
+    await tester.ensureVisible(find.text('Âm nhạc & sáng tạo'));
+    await tester.tap(find.text('Âm nhạc & sáng tạo'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Giáo dục & kiến thức').last);
+    await tester.pumpAndSettle();
+    expect(find.text('#giaoduc'), findsOneWidget);
+    expect(find.text('#remix'), findsNothing);
+    expect(tester.takeException(), isNull);
+
     await tester.tap(find.byTooltip('Quay lại'));
     await tester.pumpAndSettle();
 

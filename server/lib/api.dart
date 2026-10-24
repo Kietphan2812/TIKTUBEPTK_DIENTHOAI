@@ -43,6 +43,7 @@ Handler createApi(Db db, {CloudinaryService? cloudinary}) {
         'POST /api/auth/logout',
         'GET /health',
         'GET /api/categories',
+        'GET /api/tags?category=&limit=',
         'GET /api/videos?category=&q=&limit=',
         'GET /api/videos/trending?days=&limit=&category=',
         'GET /api/feed/subscriptions',
@@ -185,6 +186,22 @@ Handler createApi(Db db, {CloudinaryService? cloudinary}) {
     });
   });
 
+  router.get('/api/tags', (Request request) async {
+    final params = request.url.queryParameters;
+    final String category = (params['category'] ?? '').trim();
+    final int limit =
+        (int.tryParse(params['limit'] ?? '') ?? 60).clamp(1, 100).toInt();
+    final List<String> tags = await db.listTags(
+      category: category,
+      limit: limit,
+    );
+    return _json(<String, Object?>{
+      'items': tags,
+      'count': tags.length,
+      'category': category,
+    });
+  });
+
   router.get('/api/videos', (Request request) async {
     final params = request.url.queryParameters;
     final rawLimit = int.tryParse(params['limit'] ?? '') ?? 60;
@@ -201,12 +218,10 @@ Handler createApi(Db db, {CloudinaryService? cloudinary}) {
 
   router.get('/api/videos/trending', (Request request) async {
     final params = request.url.queryParameters;
-    final int limit = (int.tryParse(params['limit'] ?? '') ?? 12)
-        .clamp(1, 50)
-        .toInt();
-    final int days = (int.tryParse(params['days'] ?? '') ?? 7)
-        .clamp(1, 90)
-        .toInt();
+    final int limit =
+        (int.tryParse(params['limit'] ?? '') ?? 12).clamp(1, 50).toInt();
+    final int days =
+        (int.tryParse(params['days'] ?? '') ?? 7).clamp(1, 90).toInt();
     final userKey = await _optionalUserKey(db, request) ?? '';
     final videos = await db.listTrendingVideos(
       days: days,
@@ -472,9 +487,8 @@ Handler createApi(Db db, {CloudinaryService? cloudinary}) {
   router.get('/api/feed/subscriptions', (Request request) async {
     final session = await _requireSession(db, request);
     final params = request.url.queryParameters;
-    final int limit = (int.tryParse(params['limit'] ?? '') ?? 30)
-        .clamp(1, 100)
-        .toInt();
+    final int limit =
+        (int.tryParse(params['limit'] ?? '') ?? 30).clamp(1, 100).toInt();
     final videos = await db.listSubscriptionFeed(
       userKey: session['userKey'] as String,
       limit: limit,

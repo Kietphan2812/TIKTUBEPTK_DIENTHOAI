@@ -220,6 +220,39 @@ limit 1
     return result.map((row) => <String, Object?>{'name': row[0]}).toList();
   }
 
+  /// Thẻ tag đã liên kết với danh mục trong bảng `the_tag`.
+  ///
+  /// Trả về tên tag không kèm dấu `#` để UI tự định dạng.
+  Future<List<String>> listTags({
+    String? category,
+    int limit = 60,
+  }) async {
+    final normalizedCategory = category?.trim() ?? '';
+    final result = await _pool.execute(
+      Sql.named('''
+select t.ten_tag
+from the_tag t
+join danh_muc dm on dm.danh_muc_id = t.danh_muc_id
+where (@category = '' or lower(dm.ten_danh_muc) = lower(@category))
+order by t.tag_id
+limit @limit
+'''),
+      parameters: <String, Object?>{
+        'category': normalizedCategory,
+        'limit': limit,
+      },
+    );
+    final tags = <String>[];
+    final seen = <String>{};
+    for (final row in result) {
+      final raw = row[0]?.toString().trim() ?? '';
+      final name = raw.replaceFirst(RegExp(r'^#+'), '');
+      if (name.isEmpty || !seen.add(name.toLowerCase())) continue;
+      tags.add(name);
+    }
+    return tags;
+  }
+
   Future<List<Map<String, Object?>>> listVideos({
     String? category,
     String? query,

@@ -22,6 +22,9 @@ abstract interface class TikTubeApi {
     String? category,
   });
 
+  /// Thẻ tag gợi ý theo đúng danh mục đang chọn trong SQL.
+  Future<List<String>> fetchTags(String category);
+
   Future<List<Comment>> fetchComments(String videoId);
 
   Future<Comment> addComment(
