@@ -7,7 +7,6 @@ import '../data/tiktube_api.dart';
 import '../models/comment.dart';
 import '../models/video.dart';
 import '../theme/app_theme.dart';
-import '../widgets/app_pill.dart';
 import '../widgets/channel_avatar.dart';
 import '../widgets/data_state.dart';
 import '../widgets/section_top_bar.dart';
@@ -35,11 +34,15 @@ class WatchScreen extends StatefulWidget {
 class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   bool _subscribed = false;
   bool _liked = false;
+  bool _disliked = false;
   int _likeCount = 0;
   int _subscriberCount = 0;
 
   final TextEditingController _commentController = TextEditingController();
+  final FocusNode _commentFocusNode = FocusNode();
   final List<Comment> _comments = <Comment>[];
+  Comment? _replyingTo;
+  final Set<String> _expandedReplyIds = <String>{};
   bool _commentsLoading = true;
   String? _commentsError;
 
@@ -128,6 +131,44 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     }
   }
 
+  List<Comment> _getStructuredComments() {
+    final Map<String, List<Comment>> repliesMap = <String, List<Comment>>{};
+    final Set<String> rootIds = <String>{};
+    final List<Comment> roots = <Comment>[];
+    final List<Comment> potentialOrphans = <Comment>[];
+
+    for (final Comment c in _comments) {
+      if (c.parentId != null && c.parentId!.isNotEmpty) {
+        repliesMap.putIfAbsent(c.parentId!, () => <Comment>[]).add(c);
+        potentialOrphans.add(c);
+      } else {
+        if (c.id != null) rootIds.add(c.id!);
+        roots.add(c);
+      }
+    }
+
+    final List<Comment> structured = <Comment>[];
+    for (final Comment root in roots) {
+      final List<Comment> children = repliesMap[root.id] ?? <Comment>[];
+      final List<Comment> allReplies = <Comment>[...root.replies];
+      final Set<String?> existingIds = allReplies.map((e) => e.id).toSet();
+      for (final child in children) {
+        if (child.id == null || !existingIds.contains(child.id)) {
+          allReplies.add(child);
+        }
+      }
+      structured.add(root.copyWith(replies: allReplies));
+    }
+
+    for (final orphan in potentialOrphans) {
+      if (!rootIds.contains(orphan.parentId)) {
+        structured.add(orphan);
+      }
+    }
+
+    return structured;
+  }
+
   Future<void> _registerView() async {
     try {
       await widget.api.registerView(widget.video.id);
@@ -191,6 +232,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     _saveWatchProgress(force: true);
     WidgetsBinding.instance.removeObserver(this);
     _commentController.dispose();
+    _commentFocusNode.dispose();
     super.dispose();
   }
 
@@ -208,32 +250,89 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     return profile.name.isNotEmpty ? profile.name : profile.userKey;
   }
 
+  void _startReply(Comment comment) {
+    setState(() {
+      _replyingTo = comment;
+      if (comment.id != null) {
+        _expandedReplyIds.add(comment.id!);
+      }
+    });
+    _commentFocusNode.requestFocus();
+  }
+
+  void _cancelReply() {
+    setState(() => _replyingTo = null);
+  }
+
+  void _toggleReplies(String commentId) {
+    setState(() {
+      if (_expandedReplyIds.contains(commentId)) {
+        _expandedReplyIds.remove(commentId);
+      } else {
+        _expandedReplyIds.add(commentId);
+      }
+    });
+  }
+
+  void _toggleCommentLike(Comment comment) {
+    setState(() {
+      final int idx = _comments.indexWhere(
+        (c) => c == comment || (c.id != null && c.id == comment.id),
+      );
+      if (idx >= 0) {
+        final current = _comments[idx];
+        final bool next = !current.liked;
+        _comments[idx] = current.copyWith(
+          liked: next,
+          likes: (current.likes + (next ? 1 : -1)).clamp(0, 1 << 31),
+        );
+      }
+    });
+  }
+
   Future<void> _addComment() async {
     final text = _commentController.text.trim();
     if (text.isEmpty) return;
 
     final String author = _commentAuthor;
+    final Comment? replyParent = _replyingTo;
+    final String? parentId = replyParent?.id;
+
+    final String contentToSend = parentId != null && parentId.isNotEmpty
+        ? '[reply:$parentId] $text'
+        : text;
+
     final optimistic = Comment(
       author: author,
       content: text,
       date: 'Hôm nay',
       own: true,
+      parentId: parentId,
     );
     setState(() {
       _comments.insert(0, optimistic);
       _commentController.clear();
+      if (parentId != null) {
+        _expandedReplyIds.add(parentId);
+      }
+      _replyingTo = null;
     });
 
     try {
       final Comment saved = await widget.api.addComment(
         widget.video.id,
         author: author,
-        content: text,
+        content: contentToSend,
       );
       if (!mounted) return;
       setState(() {
         final int index = _comments.indexOf(optimistic);
-        if (index >= 0) _comments[index] = saved;
+        if (index >= 0) {
+          _comments[index] = saved.copyWith(
+            parentId: parentId,
+            content: text,
+          );
+        }
       });
     } catch (_) {
       if (!mounted) return;
@@ -244,10 +343,13 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _deleteComment(Comment comment) async {
-    final int index = _comments.indexOf(comment);
+    final int index = _comments.indexWhere(
+      (c) => c == comment || (c.id != null && c.id == comment.id),
+    );
     if (index < 0) return;
 
-    setState(() => _comments.removeAt(index));
+    final removed = _comments.removeAt(index);
+    setState(() {});
     _notify('Đã xoá bình luận.');
 
     final String? id = comment.id;
@@ -259,7 +361,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() {
         final int restoreAt = index.clamp(0, _comments.length);
-        _comments.insert(restoreAt, comment);
+        _comments.insert(restoreAt, removed);
       });
       _notify('Không xoá được bình luận — API đang offline.');
     }
@@ -269,10 +371,22 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     final bool next = !_liked;
     setState(() {
       _liked = next;
+      if (next) _disliked = false;
       _likeCount += next ? 1 : -1;
       if (_likeCount < 0) _likeCount = 0;
     });
     unawaited(_syncLike(next));
+  }
+
+  void _toggleDislike() {
+    setState(() {
+      _disliked = !_disliked;
+      if (_disliked && _liked) {
+        _liked = false;
+        _likeCount = (_likeCount - 1).clamp(0, 1 << 31);
+        unawaited(_syncLike(false));
+      }
+    });
   }
 
   List<Video> _relatedVideos() {
@@ -336,17 +450,26 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     subscribed: _subscribed,
                     subscriberCount: _subscriberCount,
                     liked: _liked,
+                    disliked: _disliked,
                     likeCount: _likeCount,
-                    comments: _comments,
+                    comments: _getStructuredComments(),
                     commentsLoading: _commentsLoading,
                     commentsError: _commentsError,
                     commentController: _commentController,
+                    commentFocusNode: _commentFocusNode,
+                    replyingTo: _replyingTo,
+                    expandedReplyIds: _expandedReplyIds,
                     currentUserName: commentAuthor,
                     onReloadComments: _loadComments,
                     onToggleSubscribe: _toggleSubscribe,
                     onToggleLike: _toggleLike,
+                    onToggleDislike: _toggleDislike,
                     onAddComment: _addComment,
                     onDeleteComment: _deleteComment,
+                    onStartReply: _startReply,
+                    onCancelReply: _cancelReply,
+                    onToggleReplies: _toggleReplies,
+                    onToggleCommentLike: _toggleCommentLike,
                     onNotify: _notify,
                     onProgress: _handlePlaybackProgress,
                   );
@@ -412,17 +535,26 @@ class _MainColumn extends StatelessWidget {
     required this.subscribed,
     required this.subscriberCount,
     required this.liked,
+    required this.disliked,
     required this.likeCount,
     required this.comments,
     required this.commentsLoading,
     required this.commentsError,
     required this.commentController,
+    required this.commentFocusNode,
+    required this.replyingTo,
+    required this.expandedReplyIds,
     required this.currentUserName,
     required this.onReloadComments,
     required this.onToggleSubscribe,
     required this.onToggleLike,
+    required this.onToggleDislike,
     required this.onAddComment,
     required this.onDeleteComment,
+    required this.onStartReply,
+    required this.onCancelReply,
+    required this.onToggleReplies,
+    required this.onToggleCommentLike,
     required this.onNotify,
     required this.onProgress,
   });
@@ -431,17 +563,26 @@ class _MainColumn extends StatelessWidget {
   final bool subscribed;
   final int subscriberCount;
   final bool liked;
+  final bool disliked;
   final int likeCount;
   final List<Comment> comments;
   final bool commentsLoading;
   final String? commentsError;
   final TextEditingController commentController;
+  final FocusNode commentFocusNode;
+  final Comment? replyingTo;
+  final Set<String> expandedReplyIds;
   final String currentUserName;
   final VoidCallback onReloadComments;
   final VoidCallback onToggleSubscribe;
   final VoidCallback onToggleLike;
+  final VoidCallback onToggleDislike;
   final VoidCallback onAddComment;
   final ValueChanged<Comment> onDeleteComment;
+  final ValueChanged<Comment> onStartReply;
+  final VoidCallback onCancelReply;
+  final ValueChanged<String> onToggleReplies;
+  final ValueChanged<Comment> onToggleCommentLike;
   final ValueChanged<String> onNotify;
   final ValueChanged<VideoPlaybackProgress> onProgress;
 
@@ -453,51 +594,56 @@ class _MainColumn extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        ClipRRect(
-          borderRadius: BorderRadius.circular(compact ? 8 : 12),
-          child: Stack(
-            children: <Widget>[
-              VideoSurface(video: video, onProgress: onProgress),
-              if (!video.isPlayable)
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: Container(
-                      color: Colors.black.withValues(alpha: 0.42),
-                      alignment: Alignment.center,
-                      padding: const EdgeInsets.all(20),
-                      child: const Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          Icon(
-                            Icons.cloud_off_rounded,
-                            color: Colors.white,
-                            size: 34,
-                          ),
-                          SizedBox(height: 10),
-                          Text(
-                            'Video chưa có file Cloudinary',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
+        // Cố định tỷ lệ khung video 16:9, video mọi kích cỡ nằm vừa vặn bên trong không đổi layout
+        AspectRatio(
+          aspectRatio: 16 / 9,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(compact ? 8 : 12),
+            child: Stack(
+              fit: StackFit.expand,
+              children: <Widget>[
+                VideoSurface(video: video, onProgress: onProgress),
+                if (!video.isPlayable)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: Container(
+                        color: Colors.black.withValues(alpha: 0.42),
+                        alignment: Alignment.center,
+                        padding: const EdgeInsets.all(20),
+                        child: const Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Icon(
+                              Icons.cloud_off_rounded,
                               color: Colors.white,
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w700,
+                              size: 34,
                             ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            'Hãy tải video mới để phát trực tiếp.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 11,
+                            SizedBox(height: 10),
+                            Text(
+                              'Video chưa có file Cloudinary',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
-                          ),
-                        ],
+                            SizedBox(height: 4),
+                            Text(
+                              'Hãy tải video mới để phát trực tiếp.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
         SizedBox(height: compact ? 12 : 14),
@@ -512,6 +658,7 @@ class _MainColumn extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
+        // Thanh Kênh & Nút Hành động kiểu YouTube
         Row(
           children: <Widget>[
             ChannelAvatar(video: video, size: compact ? 38 : 42),
@@ -525,7 +672,7 @@ class _MainColumn extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 13.5,
+                      fontSize: compact ? 13.5 : 14,
                       fontWeight: FontWeight.w700,
                       color: p.textPrimary,
                     ),
@@ -537,83 +684,30 @@ class _MainColumn extends StatelessWidget {
                         .subscriberLabel,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 10.5, color: p.textSecondary),
+                    style: TextStyle(
+                      fontSize: compact ? 10.5 : 11,
+                      color: p.textSecondary,
+                    ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 8),
-            AppPill(
-              label: subscribed ? 'Đã đăng ký' : 'Đăng ký',
-              height: 32,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
-              padding: const EdgeInsets.symmetric(horizontal: 13),
-              gradient: subscribed ? null : p.ctaGradient,
-              background: subscribed ? p.chip : null,
-              foreground: subscribed ? p.textPrimary : Colors.white,
+            const SizedBox(width: 10),
+            _SubscribeButton(
+              subscribed: subscribed,
               onTap: onToggleSubscribe,
             ),
           ],
         ),
-        SizedBox(height: compact ? 12 : 12),
-        if (compact)
-          _WatchActions(
-            liked: liked,
-            likeCount: likeCount,
-            onToggleLike: onToggleLike,
-            onShare: () => onNotify('Đã sao chép liên kết video.'),
-            onDownload: () => onNotify('Đang chuẩn bị tải video...'),
-            onReport: () => onNotify('Đã gửi báo cáo video.'),
-          )
-        else
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: <Widget>[
-              AppPill(
-                label: '$likeCount',
-                icon: liked
-                    ? Icons.favorite_rounded
-                    : Icons.favorite_border_rounded,
-                height: 32,
-                fontSize: 11.5,
-                fontWeight: FontWeight.w700,
-                background: p.surface,
-                borderColor: p.border,
-                foreground: liked ? p.brandRed : p.textPrimary,
-                onTap: onToggleLike,
-              ),
-              AppPill(
-                label: 'Chia sẻ',
-                icon: Icons.ios_share_rounded,
-                height: 32,
-                fontSize: 11.5,
-                background: p.surface,
-                borderColor: p.border,
-                onTap: () => onNotify('Đã sao chép liên kết video.'),
-              ),
-              AppPill(
-                label: 'Tải xuống',
-                icon: Icons.file_download_outlined,
-                height: 32,
-                fontSize: 11.5,
-                background: p.surface,
-                borderColor: p.border,
-                onTap: () => onNotify('Đang chuẩn bị tải video...'),
-              ),
-              AppPill(
-                label: 'Báo cáo',
-                icon: Icons.flag_outlined,
-                height: 32,
-                fontSize: 11.5,
-                background: p.surface,
-                borderColor: p.border,
-                foreground: p.brandRed,
-                onTap: () => onNotify('Đã gửi báo cáo video.'),
-              ),
-            ],
-          ),
+        const SizedBox(height: 12),
+        _YouTubeActionBar(
+          liked: liked,
+          disliked: disliked,
+          likeCount: likeCount,
+          onToggleLike: onToggleLike,
+          onToggleDislike: onToggleDislike,
+          onNotify: onNotify,
+        ),
         const SizedBox(height: 14),
         Text(
           '${video.viewsLabel} · ${video.date}',
@@ -652,6 +746,46 @@ class _MainColumn extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
+        // Banner thông báo đang phản hồi
+        if (replyingTo != null) ...<Widget>[
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: p.chip,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: p.border.withValues(alpha: 0.6)),
+            ),
+            child: Row(
+              children: <Widget>[
+                const Icon(
+                  Icons.reply_rounded,
+                  size: 16,
+                  color: Color(0xFF065FD4),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Đang phản hồi @${replyingTo!.author}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: p.textPrimary,
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: onCancelReply,
+                  child: Icon(
+                    Icons.close_rounded,
+                    size: 16,
+                    color: p.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -660,13 +794,16 @@ class _MainColumn extends StatelessWidget {
             Expanded(
               child: TextField(
                 controller: commentController,
+                focusNode: commentFocusNode,
                 minLines: 1,
                 maxLines: 3,
                 onSubmitted: (_) => onAddComment(),
                 style: TextStyle(fontSize: 12, color: p.textPrimary),
                 decoration: InputDecoration(
                   isDense: true,
-                  hintText: 'Viết bình luận...',
+                  hintText: replyingTo != null
+                      ? 'Viết phản hồi cho @${replyingTo!.author}...'
+                      : 'Viết bình luận...',
                   hintStyle: TextStyle(
                     fontSize: 12,
                     color: p.textSecondary.withValues(alpha: 0.8),
@@ -708,8 +845,15 @@ class _MainColumn extends StatelessWidget {
               _CommentTile(
                 comment: comment,
                 onDelete: () => onDeleteComment(comment),
+                onReply: () => onStartReply(comment),
+                onLike: () => onToggleCommentLike(comment),
+                isExpanded:
+                    comment.id != null && expandedReplyIds.contains(comment.id),
+                onToggleReplies: comment.id != null
+                    ? () => onToggleReplies(comment.id!)
+                    : null,
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
             ],
         ],
       ],
@@ -717,119 +861,53 @@ class _MainColumn extends StatelessWidget {
   }
 }
 
-class _WatchActions extends StatelessWidget {
-  const _WatchActions({
-    required this.liked,
-    required this.likeCount,
-    required this.onToggleLike,
-    required this.onShare,
-    required this.onDownload,
-    required this.onReport,
-  });
-
-  final bool liked;
-  final int likeCount;
-  final VoidCallback onToggleLike;
-  final VoidCallback onShare;
-  final VoidCallback onDownload;
-  final VoidCallback onReport;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      decoration: BoxDecoration(
-        color: p.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: p.border),
-      ),
-      child: Row(
-        children: <Widget>[
-          Expanded(
-            child: _WatchAction(
-              icon: liked
-                  ? Icons.favorite_rounded
-                  : Icons.favorite_border_rounded,
-              label: likeCount > 0 ? _shortCount(likeCount) : 'Thích',
-              active: liked,
-              onTap: onToggleLike,
-            ),
-          ),
-          _ActionDivider(color: p.border),
-          Expanded(
-            child: _WatchAction(
-              icon: Icons.ios_share_rounded,
-              label: 'Chia sẻ',
-              onTap: onShare,
-            ),
-          ),
-          _ActionDivider(color: p.border),
-          Expanded(
-            child: _WatchAction(
-              icon: Icons.file_download_outlined,
-              label: 'Tải xuống',
-              onTap: onDownload,
-            ),
-          ),
-          _ActionDivider(color: p.border),
-          Expanded(
-            child: _WatchAction(
-              icon: Icons.flag_outlined,
-              label: 'Báo cáo',
-              danger: true,
-              onTap: onReport,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _WatchAction extends StatelessWidget {
-  const _WatchAction({
-    required this.icon,
-    required this.label,
+class _SubscribeButton extends StatelessWidget {
+  const _SubscribeButton({
+    required this.subscribed,
     required this.onTap,
-    this.active = false,
-    this.danger = false,
   });
 
-  final IconData icon;
-  final String label;
+  final bool subscribed;
   final VoidCallback onTap;
-  final bool active;
-  final bool danger;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final Color color = danger
-        ? p.brandRed
-        : active
-        ? p.brandRed
-        : p.textPrimary;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 3),
-        child: Column(
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        height: 34,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          color: subscribed
+              ? p.chip
+              : (isDark ? Colors.white : const Color(0xFF0F0F0F)),
+          border: subscribed ? Border.all(color: p.border) : null,
+        ),
+        alignment: Alignment.center,
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(icon, size: 20, color: color),
-            const SizedBox(height: 3),
+            if (subscribed) ...<Widget>[
+              Icon(
+                Icons.check_rounded,
+                size: 15,
+                color: p.textPrimary,
+              ),
+              const SizedBox(width: 4),
+            ],
             Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              subscribed ? 'Đã đăng ký' : 'Đăng ký',
               style: TextStyle(
-                fontSize: 9.5,
-                fontWeight: FontWeight.w600,
-                color: danger ? p.brandRed : p.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: subscribed
+                    ? p.textPrimary
+                    : (isDark ? Colors.black : Colors.white),
               ),
             ),
           ],
@@ -839,15 +917,309 @@ class _WatchAction extends StatelessWidget {
   }
 }
 
-class _ActionDivider extends StatelessWidget {
-  const _ActionDivider({required this.color});
+class _YouTubeActionBar extends StatelessWidget {
+  const _YouTubeActionBar({
+    required this.liked,
+    required this.disliked,
+    required this.likeCount,
+    required this.onToggleLike,
+    required this.onToggleDislike,
+    required this.onNotify,
+  });
 
-  final Color color;
+  final bool liked;
+  final bool disliked;
+  final int likeCount;
+  final VoidCallback onToggleLike;
+  final VoidCallback onToggleDislike;
+  final ValueChanged<String> onNotify;
 
   @override
   Widget build(BuildContext context) {
-    return Container(width: 1, height: 26, color: color);
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          _YouTubeLikeDislikePill(
+            liked: liked,
+            disliked: disliked,
+            likeCount: likeCount,
+            onToggleLike: onToggleLike,
+            onToggleDislike: onToggleDislike,
+          ),
+          const SizedBox(width: 8),
+          _YouTubePillButton(
+            icon: Icons.reply_rounded,
+            label: 'Chia sẻ',
+            onTap: () => onNotify('Đã sao chép liên kết video.'),
+          ),
+          const SizedBox(width: 8),
+          _YouTubePillButton(
+            icon: Icons.auto_awesome,
+            label: 'Đặt câu hỏi',
+            onTap: () => onNotify('Trợ lý AI TIKTUBE đã sẵn sàng hỗ trợ.'),
+          ),
+          const SizedBox(width: 8),
+          _YouTubePillButton(
+            icon: Icons.download_rounded,
+            label: 'Tải xuống',
+            onTap: () => onNotify('Đang chuẩn bị tải video về máy...'),
+          ),
+          const SizedBox(width: 8),
+          _YouTubeCircleButton(
+            icon: Icons.more_horiz_rounded,
+            onTap: () => _showMoreSheet(context, onNotify),
+          ),
+        ],
+      ),
+    );
   }
+}
+
+class _YouTubeLikeDislikePill extends StatelessWidget {
+  const _YouTubeLikeDislikePill({
+    required this.liked,
+    required this.disliked,
+    required this.likeCount,
+    required this.onToggleLike,
+    required this.onToggleDislike,
+  });
+
+  final bool liked;
+  final bool disliked;
+  final int likeCount;
+  final VoidCallback onToggleLike;
+  final VoidCallback onToggleDislike;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+
+    return Container(
+      height: 36,
+      decoration: BoxDecoration(
+        color: p.chip,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: p.border.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          InkWell(
+            onTap: onToggleLike,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(20),
+              bottomLeft: Radius.circular(20),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.only(left: 12, right: 10),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(
+                    liked ? Icons.thumb_up_rounded : Icons.thumb_up_outlined,
+                    size: 18,
+                    color: liked ? p.brandRed : p.textPrimary,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    likeCount > 0 ? _shortCount(likeCount) : 'Thích',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: liked ? p.brandRed : p.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Container(
+            width: 1,
+            height: 18,
+            color: p.border,
+          ),
+          InkWell(
+            onTap: onToggleDislike,
+            borderRadius: const BorderRadius.only(
+              topRight: Radius.circular(20),
+              bottomRight: Radius.circular(20),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Icon(
+                disliked ? Icons.thumb_down_rounded : Icons.thumb_down_outlined,
+                size: 18,
+                color: disliked ? p.brandRed : p.textPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _YouTubePillButton extends StatelessWidget {
+  const _YouTubePillButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        height: 36,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: p.chip,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: p.border.withValues(alpha: 0.5)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(icon, size: 18, color: p.textPrimary),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: p.textPrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _YouTubeCircleButton extends StatelessWidget {
+  const _YouTubeCircleButton({
+    required this.icon,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: p.chip,
+          shape: BoxShape.circle,
+          border: Border.all(color: p.border.withValues(alpha: 0.5)),
+        ),
+        alignment: Alignment.center,
+        child: Icon(icon, size: 18, color: p.textPrimary),
+      ),
+    );
+  }
+}
+
+void _showMoreSheet(BuildContext context, ValueChanged<String> onNotify) {
+  final p = context.palette;
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: p.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    ),
+    builder: (BuildContext ctx) {
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              ListTile(
+                leading: Icon(Icons.flag_outlined, color: p.brandRed),
+                title: Text(
+                  'Báo cáo vi phạm',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: p.brandRed,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  onNotify('Đã gửi báo cáo video vi phạm.');
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.link_rounded, color: p.textPrimary),
+                title: Text(
+                  'Sao chép liên kết',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: p.textPrimary,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  onNotify('Đã sao chép liên kết video.');
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.tune_rounded, color: p.textPrimary),
+                title: Text(
+                  'Chất lượng (Tự động 1080p)',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: p.textPrimary,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  onNotify('Đang phát ở độ phân giải cao nhất.');
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.speed_rounded, color: p.textPrimary),
+                title: Text(
+                  'Tốc độ phát lại (Chuẩn 1.0x)',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: p.textPrimary,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  onNotify('Tốc độ chuẩn 1.0x.');
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
 }
 
 String _shortCount(int value) {
@@ -861,69 +1233,229 @@ String _shortCount(int value) {
 }
 
 class _CommentTile extends StatelessWidget {
-  const _CommentTile({required this.comment, required this.onDelete});
+  const _CommentTile({
+    required this.comment,
+    required this.onDelete,
+    required this.onReply,
+    required this.onLike,
+    this.isReply = false,
+    this.isExpanded = false,
+    this.onToggleReplies,
+  });
 
   final Comment comment;
   final VoidCallback onDelete;
+  final VoidCallback onReply;
+  final VoidCallback onLike;
+  final bool isReply;
+  final bool isExpanded;
+  final VoidCallback? onToggleReplies;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+    final double avatarSize = isReply ? 24 : 32;
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        _CommentAvatar(author: comment.author, size: 26),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
+    return Padding(
+      padding: EdgeInsets.only(
+        left: isReply ? 38 : 0,
+        bottom: isReply ? 8 : 12,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Row(
-                children: <Widget>[
-                  Text(
-                    comment.author,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: p.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    comment.date,
-                    style: TextStyle(fontSize: 9.5, color: p.textSecondary),
-                  ),
-                  const Spacer(),
-                  if (comment.own)
-                    MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: onDelete,
-                        child: Text(
-                          'Xóa',
+              _CommentAvatar(author: comment.author, size: avatarSize),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        Text(
+                          comment.author.startsWith('@')
+                              ? comment.author
+                              : '@${comment.author}',
                           style: TextStyle(
-                            fontSize: 9.5,
+                            fontSize: isReply ? 11 : 12,
+                            fontWeight: FontWeight.w700,
+                            color: p.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          comment.date,
+                          style: TextStyle(
+                            fontSize: isReply ? 9.5 : 10,
                             color: p.textSecondary,
                           ),
                         ),
+                        const Spacer(),
+                        if (comment.own)
+                          MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            child: GestureDetector(
+                              onTap: onDelete,
+                              child: Text(
+                                'Xóa',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: p.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      comment.content,
+                      style: TextStyle(
+                        fontSize: isReply ? 12 : 12.5,
+                        height: 1.35,
+                        color: p.textPrimary,
                       ),
                     ),
-                ],
-              ),
-              const SizedBox(height: 2),
-              Text(
-                comment.content,
-                style: TextStyle(
-                  fontSize: 12,
-                  height: 1.35,
-                  color: p.textPrimary,
+                    const SizedBox(height: 4),
+                    // Action row under comment: 👍 Like, 👎 Dislike, Phản hồi
+                    Row(
+                      children: <Widget>[
+                        InkWell(
+                          onTap: onLike,
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 2,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                Icon(
+                                  comment.liked
+                                      ? Icons.thumb_up_rounded
+                                      : Icons.thumb_up_outlined,
+                                  size: 14,
+                                  color: comment.liked
+                                      ? p.brandRed
+                                      : p.textSecondary,
+                                ),
+                                if (comment.likes > 0) ...<Widget>[
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${comment.likes}',
+                                    style: TextStyle(
+                                      fontSize: 10.5,
+                                      color: comment.liked
+                                          ? p.brandRed
+                                          : p.textSecondary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        InkWell(
+                          onTap: () {},
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 2,
+                            ),
+                            child: Icon(
+                              Icons.thumb_down_outlined,
+                              size: 14,
+                              color: p.textSecondary,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        InkWell(
+                          onTap: onReply,
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            child: Text(
+                              'Phản hồi',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: p.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-        ),
-      ],
+          // Reply toggle row if has replies
+          if (!isReply && comment.replies.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.only(left: 42),
+              child: InkWell(
+                onTap: onToggleReplies,
+                borderRadius: BorderRadius.circular(16),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 4,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Icon(
+                        isExpanded
+                            ? Icons.arrow_drop_up_rounded
+                            : Icons.arrow_drop_down_rounded,
+                        color: const Color(0xFF065FD4),
+                        size: 20,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        isExpanded
+                            ? 'Thu gọn'
+                            : '${comment.replies.length} phản hồi',
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF065FD4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+          // List of nested replies
+          if (!isReply && isExpanded && comment.replies.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 6),
+            for (final Comment reply in comment.replies)
+              _CommentTile(
+                comment: reply,
+                isReply: true,
+                onDelete: onDelete,
+                onReply: onReply,
+                onLike: onLike,
+              ),
+          ],
+        ],
+      ),
     );
   }
 }

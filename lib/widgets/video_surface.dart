@@ -176,7 +176,7 @@ class _VideoSurfaceState extends State<VideoSurface> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(0),
       child: AspectRatio(
-        aspectRatio: aspect,
+        aspectRatio: 16 / 9,
         child: GestureDetector(
           onTap: _togglePlay,
           behavior: HitTestBehavior.opaque,
@@ -185,7 +185,12 @@ class _VideoSurfaceState extends State<VideoSurface> {
             children: <Widget>[
               ColoredBox(
                 color: Colors.black,
-                child: Center(child: VideoPlayer(controller)),
+                child: Center(
+                  child: AspectRatio(
+                    aspectRatio: aspect,
+                    child: VideoPlayer(controller),
+                  ),
+                ),
               ),
               if (!value.isPlaying)
                 Center(

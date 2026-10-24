@@ -834,6 +834,20 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('hay quá'), findsOneWidget);
+    expect(find.text('Chia sẻ'), findsWidgets);
+    expect(find.text('Đặt câu hỏi'), findsOneWidget);
+    expect(find.text('Tải xuống'), findsWidgets);
+
+    // Kiểm tra phản hồi bình luận
+    expect(find.text('Phản hồi'), findsWidgets);
+    await tester.tap(find.text('Phản hồi').first);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Đang phản hồi'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'đồng ý với bạn');
+    await tester.tap(find.byTooltip('Gửi bình luận'));
+    await tester.pumpAndSettle();
+    expect(find.text('đồng ý với bạn'), findsOneWidget);
   });
 
   testWidgets('Xem video mở feed dọc và lưu/thích được video', (
