@@ -28,23 +28,24 @@ class AppTabPill extends StatelessWidget {
           duration: const Duration(milliseconds: 150),
           height: 28,
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          alignment: Alignment.center,
           decoration: BoxDecoration(
             color: selected ? p.textPrimary : p.surface,
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: selected ? Colors.transparent : p.border,
-            ),
+            border: Border.all(color: selected ? Colors.transparent : p.border),
           ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 9.5,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.6,
-              color: selected
-                  ? (dark ? const Color(0xFF111114) : p.surface)
-                  : p.textSecondary,
+          child: Center(
+            widthFactor: 1,
+            heightFactor: 1,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.6,
+                color: selected
+                    ? (dark ? const Color(0xFF111114) : p.surface)
+                    : p.textSecondary,
+              ),
             ),
           ),
         ),
