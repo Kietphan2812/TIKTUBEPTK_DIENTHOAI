@@ -282,7 +282,7 @@ class _QuickWatchPageState extends State<QuickWatchPage> {
           Positioned(
             left: 14,
             right: 92,
-            bottom: 104 + bottomInset,
+            bottom: 66 + bottomInset,
             child: _Caption(
               video: video,
               expanded: _captionExpanded,
@@ -298,7 +298,7 @@ class _QuickWatchPageState extends State<QuickWatchPage> {
           ),
           Positioned(
             right: 8,
-            bottom: 100 + bottomInset,
+            bottom: 64 + bottomInset,
             child: _ActionRail(
               video: video,
               onLike: widget.onLike,
@@ -868,19 +868,6 @@ class _ActionRail extends StatelessWidget {
           icon: Icons.share_rounded,
           label: 'Chia sẻ',
           onTap: onShare,
-        ),
-        const SizedBox(height: 4),
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: const LinearGradient(
-              colors: <Color>[Color(0xFF1F2937), Color(0xFF111827)],
-            ),
-            border: Border.all(color: Colors.white54, width: 4),
-          ),
-          child: const Icon(Icons.music_note_rounded, color: Colors.white, size: 20),
         ),
       ],
     );

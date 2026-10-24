@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../auth/auth_scope.dart';
@@ -28,6 +31,7 @@ class _AccountScreenState extends State<AccountScreen> {
   String? _error;
   String _displayName = 'kiepthan4';
   String _userKey = '';
+  String? _avatarUrl;
 
   @override
   void initState() {
@@ -48,6 +52,7 @@ class _AccountScreenState extends State<AccountScreen> {
     _age.text = cached.age?.toString() ?? '';
     _displayName = cached.name.isEmpty ? cached.userKey : cached.name;
     _userKey = cached.userKey;
+    _avatarUrl = cached.avatarUrl;
   }
 
   Future<void> _load() async {
@@ -64,6 +69,7 @@ class _AccountScreenState extends State<AccountScreen> {
         _age.text = profile.age?.toString() ?? '';
         _displayName = profile.name.isEmpty ? profile.userKey : profile.name;
         _userKey = profile.userKey;
+        _avatarUrl = profile.avatarUrl;
         _loading = false;
       });
     } catch (error) {
@@ -93,11 +99,13 @@ class _AccountScreenState extends State<AccountScreen> {
 
   Future<void> _save({
     String message = 'Đã lưu thông tin tài khoản vào Neon.',
+    String? newAvatarUrl,
   }) async {
     if (_saving) return;
     final String name = _username.text.trim();
     final String email = _email.text.trim();
     final int? age = int.tryParse(_age.text.trim());
+    final String? avatarToSave = newAvatarUrl ?? _avatarUrl;
 
     if (name.isEmpty) {
       _notify('Tên đăng nhập không được để trống.');
@@ -119,11 +127,13 @@ class _AccountScreenState extends State<AccountScreen> {
         name: name,
         email: email,
         age: age,
+        avatarUrl: avatarToSave,
       );
       if (!mounted) return;
       setState(() {
         _displayName = profile.name.isEmpty ? profile.userKey : profile.name;
         _userKey = profile.userKey;
+        _avatarUrl = profile.avatarUrl;
         _saving = false;
       });
       AuthScope.maybeOf(context)?.updateProfileCache(profile);
@@ -133,6 +143,214 @@ class _AccountScreenState extends State<AccountScreen> {
       setState(() => _saving = false);
       _notify('Không lưu được tài khoản: $error');
     }
+  }
+
+  void _openChangeAvatarSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext ctx) {
+        final p = ctx.palette;
+        final urlController = TextEditingController();
+
+        const presetAvatars = <Map<String, String>>[
+          {
+            'title': 'Neon Gamer',
+            'url': 'https://images.unsplash.com/photo-1566492031773-4f4e44671857?w=200&auto=format&fit=crop&q=80',
+          },
+          {
+            'title': 'Anime Chill',
+            'url': 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+          },
+          {
+            'title': 'Mèo Cute',
+            'url': 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=200&auto=format&fit=crop&q=80',
+          },
+          {
+            'title': 'Cún Shiba',
+            'url': 'https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=200&auto=format&fit=crop&q=80',
+          },
+          {
+            'title': 'Vũ trụ 3D',
+            'url': 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=200&auto=format&fit=crop&q=80',
+          },
+          {
+            'title': 'DJ Music',
+            'url': 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=200&auto=format&fit=crop&q=80',
+          },
+        ];
+
+        return Container(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+          decoration: BoxDecoration(
+            color: p.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+            border: Border.all(color: p.border),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Icon(Icons.account_circle_rounded, color: p.brandRed, size: 24),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Đổi ảnh đại diện',
+                      style: TextStyle(
+                        color: p.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.close_rounded, color: p.textSecondary),
+                    onPressed: () => Navigator.of(ctx).pop(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  Navigator.of(ctx).pop();
+                  try {
+                    final PlatformFile? file = await FilePicker.pickFile(
+                      type: FileType.image,
+                    );
+                    if (file != null) {
+                      final bytes = await file.readAsBytes();
+                      if (bytes.isNotEmpty) {
+                        final ext = (file.extension ?? 'jpg').toLowerCase();
+                        final mime = ext == 'png' ? 'image/png' : 'image/jpeg';
+                        final base64String = base64Encode(bytes);
+                        final dataUri = 'data:$mime;base64,$base64String';
+                        setState(() => _avatarUrl = dataUri);
+                        await _save(
+                          message: 'Đã cập nhật ảnh đại diện từ thiết bị!',
+                          newAvatarUrl: dataUri,
+                        );
+                      }
+                    }
+                  } catch (_) {}
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: p.brandRed,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                icon: const Icon(Icons.photo_library_rounded, size: 19),
+                label: const Text('Chọn ảnh từ thiết bị', style: TextStyle(fontWeight: FontWeight.w700)),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Bộ sưu tập Avatar TikTube:',
+                style: TextStyle(color: p.textSecondary, fontSize: 12.5, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 80,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: presetAvatars.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 12),
+                  itemBuilder: (_, int i) {
+                    final item = presetAvatars[i];
+                    return GestureDetector(
+                      onTap: () async {
+                        final chosen = item['url']!;
+                        Navigator.of(ctx).pop();
+                        setState(() => _avatarUrl = chosen);
+                        await _save(
+                          message: 'Đã đổi ảnh đại diện sang ${item['title']}!',
+                          newAvatarUrl: chosen,
+                        );
+                      },
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          CircleAvatar(
+                            radius: 26,
+                            backgroundColor: p.surfaceAlt,
+                            backgroundImage: NetworkImage(item['url']!),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            item['title']!,
+                            style: TextStyle(color: p.textPrimary, fontSize: 10, fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: TextField(
+                      controller: urlController,
+                      style: TextStyle(color: p.textPrimary, fontSize: 13),
+                      decoration: InputDecoration(
+                        hintText: 'Hoặc dán URL ảnh đại diện...',
+                        hintStyle: TextStyle(color: p.textSecondary, fontSize: 12),
+                        filled: true,
+                        fillColor: p.surfaceAlt,
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: p.border),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: () async {
+                      final url = urlController.text.trim();
+                      if (url.isNotEmpty) {
+                        Navigator.of(ctx).pop();
+                        setState(() => _avatarUrl = url);
+                        await _save(
+                          message: 'Đã đổi ảnh đại diện từ link URL!',
+                          newAvatarUrl: url,
+                        );
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: p.chip,
+                      foregroundColor: p.textPrimary,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: const Text('Áp dụng'),
+                  ),
+                ],
+              ),
+              if (_avatarUrl != null && _avatarUrl!.isNotEmpty) ...<Widget>[
+                const SizedBox(height: 10),
+                TextButton.icon(
+                  onPressed: () async {
+                    Navigator.of(ctx).pop();
+                    setState(() => _avatarUrl = '');
+                    await _save(
+                      message: 'Đã xóa ảnh đại diện về mặc định!',
+                      newAvatarUrl: '',
+                    );
+                  },
+                  icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Colors.grey),
+                  label: const Text('Xóa ảnh đại diện (dùng mặc định)', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _goHome() {
@@ -186,6 +404,8 @@ class _AccountScreenState extends State<AccountScreen> {
                           _ProfileHeader(
                             displayName: _displayName,
                             userKey: _userKey,
+                            avatarUrl: _avatarUrl,
+                            onChangeAvatar: _openChangeAvatarSheet,
                             loading: _loading,
                             compact: compact,
                           ),
@@ -225,18 +445,64 @@ class _ProfileHeader extends StatelessWidget {
   const _ProfileHeader({
     required this.displayName,
     required this.userKey,
+    required this.avatarUrl,
+    required this.onChangeAvatar,
     required this.loading,
     required this.compact,
   });
 
   final String displayName;
   final String userKey;
+  final String? avatarUrl;
+  final VoidCallback onChangeAvatar;
   final bool loading;
   final bool compact;
+
+  Widget _buildAvatarContent(double size) {
+    if (avatarUrl != null && avatarUrl!.trim().isNotEmpty) {
+      final trimmed = avatarUrl!.trim();
+      if (trimmed.startsWith('data:image')) {
+        try {
+          final comma = trimmed.indexOf(',');
+          if (comma > 0) {
+            final bytes = base64Decode(trimmed.substring(comma + 1));
+            return ClipOval(
+              child: Image.memory(
+                bytes,
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => _defaultPersonIcon(),
+              ),
+            );
+          }
+        } catch (_) {}
+      }
+      return ClipOval(
+        child: Image.network(
+          trimmed,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => _defaultPersonIcon(),
+        ),
+      );
+    }
+    return _defaultPersonIcon();
+  }
+
+  Widget _defaultPersonIcon() {
+    return const Icon(
+      Icons.person_rounded,
+      size: 32,
+      color: Colors.white,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+    final double avatarSize = compact ? 60 : 70;
 
     return Container(
       padding: EdgeInsets.all(compact ? 16 : 22),
@@ -247,18 +513,49 @@ class _ProfileHeader extends StatelessWidget {
       ),
       child: Row(
         children: <Widget>[
-          Container(
-            width: compact ? 58 : 66,
-            height: compact ? 58 : 66,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(colors: p.ctaGradient),
-            ),
-            child: const Icon(
-              Icons.person_rounded,
-              size: 32,
-              color: Colors.white,
+          GestureDetector(
+            onTap: onChangeAvatar,
+            child: Tooltip(
+              message: 'Bấm để đổi ảnh đại diện',
+              child: Stack(
+                children: <Widget>[
+                  Container(
+                    width: avatarSize,
+                    height: avatarSize,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(colors: p.ctaGradient),
+                      boxShadow: <BoxShadow>[
+                        BoxShadow(
+                          color: p.brandRed.withValues(alpha: 0.28),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: _buildAvatarContent(avatarSize),
+                  ),
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 22,
+                      height: 22,
+                      decoration: BoxDecoration(
+                        color: p.brandRed,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: p.surface, width: 2),
+                      ),
+                      child: const Icon(
+                        Icons.camera_alt_rounded,
+                        color: Colors.white,
+                        size: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           const SizedBox(width: 14),

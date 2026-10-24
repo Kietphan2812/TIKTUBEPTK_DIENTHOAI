@@ -1840,6 +1840,7 @@ limit 1
     required String name,
     required String email,
     int? age,
+    String? avatarUrl,
   }) async {
     final result = await _pool.execute(
       Sql.named('''
@@ -1847,6 +1848,7 @@ update nguoi_dung
 set ten_hien_thi = @name,
     email = lower(@email),
     do_tuoi = @age,
+    anh_dai_dien = coalesce(@avatarUrl, anh_dai_dien),
     ngay_cap_nhat = now()
 where lower(ten_dang_nhap) = lower(@userKey)
 returning nguoi_dung_id, ten_dang_nhap,
@@ -1858,6 +1860,7 @@ returning nguoi_dung_id, ten_dang_nhap,
         'name': name,
         'email': email,
         'age': (age ?? 18).toString(),
+        'avatarUrl': avatarUrl,
       },
     );
     if (result.isEmpty) return null;

@@ -168,7 +168,14 @@ class _OfflineApi implements TikTubeApi {
     required String name,
     required String email,
     int? age,
-  }) async => Profile(userKey: 'kiepthan4', name: name, email: email, age: age);
+    String? avatarUrl,
+  }) async => Profile(
+        userKey: 'kiepthan4',
+        name: name,
+        email: email,
+        age: age,
+        avatarUrl: avatarUrl,
+      );
 
   @override
   void setAuthToken(String? token) {}

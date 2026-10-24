@@ -742,11 +742,14 @@ Handler createApi(Db db, {CloudinaryService? cloudinary}) {
       throw ApiError(409, 'Email đã được sử dụng bởi tài khoản khác.');
     }
 
+    final avatarUrl = (body['avatarUrl'] as String?)?.trim();
+
     final profile = await db.updateProfile(
       userKey: userKey,
       name: name,
       email: email,
       age: age,
+      avatarUrl: avatarUrl,
     );
     if (profile == null) throw ApiError(404, 'Không tìm thấy tài khoản.');
     return _json(<String, Object?>{'profile': profile});

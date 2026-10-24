@@ -147,6 +147,7 @@ abstract interface class TikTubeApi {
     required String name,
     required String email,
     int? age,
+    String? avatarUrl,
   });
 
   // ---------------------------------------------------------------------------

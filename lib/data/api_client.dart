@@ -392,11 +392,20 @@ class ApiClient implements TikTubeApi {
     required String name,
     required String email,
     int? age,
+    String? avatarUrl,
   }) async {
+    final body = <String, Object?>{
+      'name': name,
+      'email': email,
+      'age': age,
+    };
+    if (avatarUrl != null) {
+      body['avatarUrl'] = avatarUrl;
+    }
     final data = await _request(
       'PATCH',
       _uri('/api/me'),
-      body: <String, Object?>{'name': name, 'email': email, 'age': age},
+      body: body,
     );
     return Profile.fromJson(data['profile'] as Map<String, dynamic>);
   }
