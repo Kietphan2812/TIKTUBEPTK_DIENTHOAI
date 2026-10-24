@@ -61,15 +61,6 @@ class _AuthScreenState extends State<AuthScreen> {
     });
   }
 
-  void _fillDemoAccount() {
-    setState(() {
-      _register = false;
-      _login.text = 'kiepthan4';
-      _password.text = 'TikTube@123';
-      _error = null;
-    });
-  }
-
   Future<void> _submit() async {
     if (_submitting) return;
 
@@ -424,55 +415,7 @@ class _AuthScreenState extends State<AuthScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            Row(
-              children: <Widget>[
-                const _MiniLogo(),
-                const Spacer(),
-                Tooltip(
-                  message: 'Điền nhanh tài khoản demo kiepthan4 / TikTube@123',
-                  child: Material(
-                    type: MaterialType.transparency,
-                    child: InkWell(
-                      onTap: _submitting ? null : _fillDemoAccount,
-                      borderRadius: BorderRadius.circular(999),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 9,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _violet.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: _violet.withValues(alpha: 0.15),
-                          ),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            Icon(
-                              Icons.auto_awesome_rounded,
-                              size: 12,
-                              color: _violet,
-                            ),
-                            SizedBox(width: 4),
-                            Text(
-                              'DÙNG DEMO',
-                              style: TextStyle(
-                                color: _violetDark,
-                                fontSize: 9,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.6,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            const _MiniLogo(),
             SizedBox(height: compact ? 20 : 24),
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 220),
@@ -528,8 +471,6 @@ class _AuthScreenState extends State<AuthScreen> {
               loading: _submitting,
               onTap: _submit,
             ),
-            const SizedBox(height: 18),
-            _demoAccountCard(),
             const SizedBox(height: 18),
             const Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -624,7 +565,7 @@ class _AuthScreenState extends State<AuthScreen> {
           _AuthField(
             controller: _login,
             label: 'Email hoặc tên đăng nhập',
-            hint: 'kiepthan4 hoặc email@example.com',
+            hint: 'email@example.com hoặc tên đăng nhập',
             icon: Icons.alternate_email_rounded,
             autofillHints: const <String>[AutofillHints.username],
             textInputAction: TextInputAction.next,
@@ -766,82 +707,6 @@ class _AuthScreenState extends State<AuthScreen> {
               LengthLimitingTextInputFormatter(3),
             ],
             validator: _ageValidator,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _demoAccountCard() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 11, 8, 11),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: <Color>[
-            _violet.withValues(alpha: 0.075),
-            _pink.withValues(alpha: 0.05),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _violet.withValues(alpha: 0.15)),
-      ),
-      child: Row(
-        children: <Widget>[
-          Container(
-            width: 36,
-            height: 36,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: _violet.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(11),
-            ),
-            child: const Icon(
-              Icons.auto_awesome_rounded,
-              size: 18,
-              color: _violet,
-            ),
-          ),
-          const SizedBox(width: 10),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  'TÀI KHOẢN DEMO',
-                  style: TextStyle(
-                    color: _violetDark,
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.7,
-                  ),
-                ),
-                SizedBox(height: 3),
-                Text(
-                  'kiepthan4  ·  TikTube@123',
-                  style: TextStyle(
-                    color: _ink,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          TextButton(
-            onPressed: _submitting ? null : _fillDemoAccount,
-            style: TextButton.styleFrom(
-              foregroundColor: _violetDark,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              textStyle: const TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            child: const Text('Điền'),
           ),
         ],
       ),

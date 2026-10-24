@@ -4,7 +4,7 @@ Bản dựng lại giao diện **TIKTUBE** (trang xem & chia sẻ video của PT
 kèm REST API viết bằng Dart, dùng chung database Neon với web app và lưu video trên
 Cloudinary.
 
-Phiên bản Android đang phát hành: **1.0.7+8** (APK cài trực tiếp, trỏ API
+Phiên bản Android đang phát hành: **1.0.8+9** (APK cài trực tiếp, trỏ API
 `https://tiktube-api.onrender.com`).
 
 ## Kiến trúc
@@ -328,10 +328,11 @@ flutter build web --release
 cd server && dart analyze
 ```
 
-Hiện có 28 test: parse API, xu hướng + feed đăng ký + feed Dành cho bạn, thời lượng
+Hiện có 29 test: parse API, xu hướng + feed đăng ký + feed Dành cho bạn, thời lượng
 xem, thẻ tag theo danh mục, đăng nhập + Bearer token, trang chủ, trạng thái lỗi
 API, thống kê, tìm kiếm, responsive, điều hướng, xem video/bình luận, thông báo,
-upload tiến trình và luồng đăng nhập/đăng ký/đăng xuất.
+upload tiến trình, khôi phục phiên sau khi mở lại app và luồng đăng nhập/đăng
+ký/đăng xuất.
 
 ## Deploy API lên Render
 
@@ -377,6 +378,7 @@ Không commit `server/.env`; các secret chỉ khai báo trong Render Dashboard.
   Đây không phải chuẩn lưu mật khẩu hiện đại; nếu có thể sửa cả web, nên chuyển
   sang Argon2id/bcrypt có salt và migrate dần.
 - Token phiên được lưu dạng SHA-256 trong `app_sessions.token_hash`. Trên web,
-  token được giữ trong `localStorage` — phù hợp cho demo, nhưng production nên
+  token được giữ trong `localStorage`; trên Android/iOS/desktop, token được lưu
+  bằng `SharedPreferences` để app nhớ đăng nhập sau khi thoát. Production nên
   dùng cookie `HttpOnly` hoặc secure storage.
 - Không dùng tài khoản demo cho dữ liệu thật.

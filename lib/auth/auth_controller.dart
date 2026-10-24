@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -31,7 +32,7 @@ class AuthController extends ChangeNotifier {
   Future<void> restore() async {
     String? raw;
     try {
-      raw = _store.read();
+      raw = await _store.read();
     } catch (_) {
       raw = null;
     }
@@ -61,11 +62,11 @@ class AuthController extends ChangeNotifier {
       try {
         final Profile fresh = await _api.fetchProfile();
         _profile = fresh;
-        _persist();
+        await _persist();
         notifyListeners();
       } on ApiException catch (error) {
         if (error.statusCode == 401) {
-          _clearLocal();
+          await _clearLocal();
           notifyListeners();
         }
         // Lỗi mạng: giữ phiên đã lưu để app vẫn mở được.
@@ -73,7 +74,7 @@ class AuthController extends ChangeNotifier {
         // Lỗi mạng: giữ phiên đã lưu để app vẫn mở được.
       }
     } catch (_) {
-      _clearLocal();
+      await _clearLocal();
       notifyListeners();
     }
   }
@@ -83,7 +84,7 @@ class AuthController extends ChangeNotifier {
     required String password,
   }) async {
     final session = await _api.login(login: login, password: password);
-    _apply(session);
+    await _apply(session);
   }
 
   Future<void> register({
@@ -100,15 +101,15 @@ class AuthController extends ChangeNotifier {
       password: password,
       age: age,
     );
-    _apply(session);
+    await _apply(session);
   }
 
-  void _apply(AuthSession session) {
+  Future<void> _apply(AuthSession session) async {
     _token = session.token;
     _profile = session.profile;
     _status = AuthStatus.authenticated;
     _api.setAuthToken(_token);
-    _persist();
+    await _persist();
     notifyListeners();
   }
 
@@ -120,36 +121,36 @@ class AuthController extends ChangeNotifier {
       // Vẫn đăng xuất trên thiết bị.
     }
     _api.setAuthToken(null);
-    _clearLocal();
+    await _clearLocal();
     notifyListeners();
   }
 
   /// Cập nhật hồ sơ đang hiển thị sau khi người dùng lưu ở trang tài khoản.
   void updateProfileCache(Profile profile) {
     _profile = profile;
-    _persist();
+    unawaited(_persist());
     notifyListeners();
   }
 
-  void _persist() {
+  Future<void> _persist() async {
     final token = _token;
     final profile = _profile;
     if (token == null || profile == null) return;
     try {
-      _store.write(
+      await _store.write(
         jsonEncode(AuthSession(token: token, profile: profile).toJson()),
       );
     } catch (_) {
-      // localStorage có thể bị chặn; không làm hỏng phiên hiện tại.
+      // Bộ nhớ thiết bị có thể bị chặn; không làm hỏng phiên hiện tại.
     }
   }
 
-  void _clearLocal() {
+  Future<void> _clearLocal() async {
     _token = null;
     _profile = null;
     _status = AuthStatus.unauthenticated;
     try {
-      _store.clear();
+      await _store.clear();
     } catch (_) {
       // Bỏ qua lỗi lưu trữ.
     }

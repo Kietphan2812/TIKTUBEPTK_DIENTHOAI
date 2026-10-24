@@ -1,8 +1,8 @@
 /// Nơi lưu phiên đăng nhập (token + hồ sơ) giữa các lần mở app.
 abstract interface class AuthSessionStore {
-  String? read();
+  Future<String?> read();
 
-  void write(String value);
+  Future<void> write(String value);
 
-  void clear();
+  Future<void> clear();
 }

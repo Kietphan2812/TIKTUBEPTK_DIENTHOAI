@@ -259,13 +259,13 @@ class _MemoryAuthStore implements AuthSessionStore {
   String? _value;
 
   @override
-  String? read() => _value;
+  Future<String?> read() async => _value;
 
   @override
-  void write(String value) => _value = value;
+  Future<void> write(String value) async => _value = value;
 
   @override
-  void clear() => _value = null;
+  Future<void> clear() async => _value = null;
 }
 
 class _StatsApi extends _OfflineApi {
@@ -814,7 +814,7 @@ void main() {
     expect(find.text('hay quá'), findsOneWidget);
   });
 
-  testWidgets('Đăng nhập bằng tài khoản demo rồi đăng xuất', (
+  testWidgets('Đăng nhập rồi đăng xuất và không hiện tài khoản demo', (
     WidgetTester tester,
   ) async {
     tester.view.physicalSize = const Size(1400, 1100);
@@ -832,11 +832,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Chào mừng trở lại'), findsOneWidget);
-    expect(find.text('Tài khoản demo'), findsNothing);
-    expect(find.text('TÀI KHOẢN DEMO'), findsOneWidget);
+    expect(find.text('DÙNG DEMO'), findsNothing);
+    expect(find.text('TÀI KHOẢN DEMO'), findsNothing);
+    expect(find.textContaining('TikTube@123'), findsNothing);
 
-    await tester.tap(find.text('Điền'));
-    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField).at(0), 'kiepthan4');
+    await tester.enterText(find.byType(TextFormField).at(1), 'TikTube@123');
     await tester.tap(find.byKey(const ValueKey<String>('auth-submit')));
     await tester.pumpAndSettle();
 
@@ -850,6 +851,53 @@ void main() {
     await tester.tap(find.text('Đăng xuất'));
     await tester.pumpAndSettle();
 
+    expect(find.text('Chào mừng trở lại'), findsOneWidget);
+  });
+
+  testWidgets('Mở lại app vẫn giữ phiên đăng nhập cho đến khi đăng xuất', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 1100);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final _MemoryAuthStore store = _MemoryAuthStore();
+    await tester.pumpWidget(
+      PtkTubeApp(api: _OfflineApi(), authRequired: true, authStore: store),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextFormField).at(0), 'kiepthan4');
+    await tester.enterText(find.byType(TextFormField).at(1), 'TikTube@123');
+    await tester.tap(find.byKey(const ValueKey<String>('auth-submit')));
+    await tester.pumpAndSettle();
+    expect(find.text('Video xu hướng'), findsOneWidget);
+
+    // Giả lập thoát hẳn app rồi mở lại: phiên phải được khôi phục.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      PtkTubeApp(api: _OfflineApi(), authRequired: true, authStore: store),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Chào mừng trở lại'), findsNothing);
+    expect(find.text('Video xu hướng'), findsOneWidget);
+
+    // Đăng xuất phải xoá phiên để lần mở sau hiện lại màn hình đăng nhập.
+    await tester.tap(find.text('Tài khoản'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Đăng xuất'));
+    await tester.pumpAndSettle();
+    expect(find.text('Chào mừng trở lại'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      PtkTubeApp(api: _OfflineApi(), authRequired: true, authStore: store),
+    );
+    await tester.pumpAndSettle();
     expect(find.text('Chào mừng trở lại'), findsOneWidget);
   });
 

@@ -8,11 +8,12 @@ class _WebAuthSessionStore implements AuthSessionStore {
   static const String _key = 'tiktube.auth.session.v1';
 
   @override
-  String? read() => web.window.localStorage.getItem(_key);
+  Future<String?> read() async => web.window.localStorage.getItem(_key);
 
   @override
-  void write(String value) => web.window.localStorage.setItem(_key, value);
+  Future<void> write(String value) async =>
+      web.window.localStorage.setItem(_key, value);
 
   @override
-  void clear() => web.window.localStorage.removeItem(_key);
+  Future<void> clear() async => web.window.localStorage.removeItem(_key);
 }

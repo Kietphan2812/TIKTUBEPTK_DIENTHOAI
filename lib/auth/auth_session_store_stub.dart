@@ -6,15 +6,15 @@ String? _session;
 
 class _MemoryAuthSessionStore implements AuthSessionStore {
   @override
-  String? read() => _session;
+  Future<String?> read() async => _session;
 
   @override
-  void write(String value) {
+  Future<void> write(String value) async {
     _session = value;
   }
 
   @override
-  void clear() {
+  Future<void> clear() async {
     _session = null;
   }
 }
