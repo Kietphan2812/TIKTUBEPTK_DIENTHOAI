@@ -34,6 +34,26 @@ on app_sessions (expires_at)
 alter table nguoi_dung
 add column if not exists ten_hien_thi varchar(60)
 ''');
+    await connection.execute('''
+alter table lich_su_xem
+add column if not exists thoi_luong_xem double precision not null default 0
+''');
+    await connection.execute('''
+alter table lich_su_xem
+add column if not exists thoi_luong_video double precision not null default 0
+''');
+    await connection.execute('''
+create index if not exists app_lich_su_xem_user_time_idx
+on lich_su_xem (nguoi_dung_id, thoi_gian_xem desc)
+''');
+    await connection.execute('''
+create index if not exists app_luot_thich_user_time_idx
+on luot_thich (nguoi_dung_id, ngay_tao desc)
+''');
+    await connection.execute('''
+create index if not exists app_binh_luan_user_time_idx
+on binh_luan (nguoi_dung_id, ngay_tao desc)
+''');
 
     final demoHash = sha256.convert(utf8.encode('TikTube@123')).toString();
     final inserted = await connection.execute(

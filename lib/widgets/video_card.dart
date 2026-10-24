@@ -75,12 +75,7 @@ class _VideoCardState extends State<VideoCard> {
                   ),
                 ),
                 const SizedBox(height: 3),
-                Text(
-                  widget.video.channel,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11.5, color: p.textSecondary),
-                ),
+                _ChannelLine(video: widget.video, palette: p, compact: true),
                 const SizedBox(height: 2),
                 Text(
                   '${widget.video.viewsLabel} · ${widget.video.date}',
@@ -145,12 +140,7 @@ class _VideoCardState extends State<VideoCard> {
                     ),
                   ),
                   const SizedBox(height: 3),
-                  Text(
-                    widget.video.channel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 11.5, color: p.textSecondary),
-                  ),
+                  _ChannelLine(video: widget.video, palette: p),
                   const SizedBox(height: 2),
                   Text(
                     '${widget.video.viewsLabel} · ${widget.video.date}',
@@ -163,6 +153,64 @@ class _VideoCardState extends State<VideoCard> {
             ),
           ],
         ),
+      ],
+    );
+  }
+}
+
+/// Tên kênh kèm huy hiệu khi video thuộc kênh người dùng đã đăng ký.
+class _ChannelLine extends StatelessWidget {
+  const _ChannelLine({
+    required this.video,
+    required this.palette,
+    this.compact = false,
+  });
+
+  final Video video;
+  final PtPalette palette;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: <Widget>[
+        Flexible(
+          child: Text(
+            video.channel,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 11.5, color: palette.textSecondary),
+          ),
+        ),
+        if (video.subscribed) ...<Widget>[
+          const SizedBox(width: 5),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: palette.brandRed.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Icon(
+                  Icons.check_circle_rounded,
+                  size: compact ? 9 : 10,
+                  color: palette.brandRed,
+                ),
+                const SizedBox(width: 2),
+                Text(
+                  'Đã đăng ký',
+                  style: TextStyle(
+                    fontSize: compact ? 8.5 : 9,
+                    fontWeight: FontWeight.w700,
+                    color: palette.brandRed,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }

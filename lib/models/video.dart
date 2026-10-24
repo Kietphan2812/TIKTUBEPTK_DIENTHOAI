@@ -26,6 +26,8 @@ class Video {
     this.status = 'da_duyet',
     this.trendScore = 0,
     this.recentViews = 0,
+    this.recommendationScore = 0,
+    this.recommendationReason = '',
   });
 
   final String id;
@@ -64,6 +66,10 @@ class Video {
 
   /// Số người xem duy nhất trong cửa sổ thời gian của bảng xu hướng.
   final int recentViews;
+
+  /// Điểm và lý do gợi ý do feed "Dành cho bạn" trả về.
+  final int recommendationScore;
+  final String recommendationReason;
 
   bool get isApproved => status == 'da_duyet' || status == 'approved';
   bool get isRejected => status == 'tu_choi';
@@ -111,6 +117,8 @@ class Video {
       status: json['status']?.toString() ?? 'da_duyet',
       trendScore: (json['trendScore'] as num?)?.toInt() ?? 0,
       recentViews: (json['recentViews'] as num?)?.toInt() ?? 0,
+      recommendationScore: (json['recommendationScore'] as num?)?.toInt() ?? 0,
+      recommendationReason: json['recommendationReason']?.toString() ?? '',
     );
   }
 
@@ -122,6 +130,8 @@ class Video {
     bool? subscribed,
     int? trendScore,
     int? recentViews,
+    int? recommendationScore,
+    String? recommendationReason,
   }) {
     return Video(
       id: id,
@@ -147,6 +157,8 @@ class Video {
       status: status,
       trendScore: trendScore ?? this.trendScore,
       recentViews: recentViews ?? this.recentViews,
+      recommendationScore: recommendationScore ?? this.recommendationScore,
+      recommendationReason: recommendationReason ?? this.recommendationReason,
     );
   }
 

@@ -6,10 +6,20 @@ import 'video_thumb.dart';
 
 /// Trình phát thật cho video Cloudinary; tự quay về thumbnail gradient nếu
 /// video không có URL hoặc trình duyệt không phát được.
+class VideoPlaybackProgress {
+  const VideoPlaybackProgress({required this.position, required this.duration});
+
+  final Duration position;
+  final Duration duration;
+}
+
 class VideoSurface extends StatefulWidget {
-  const VideoSurface({super.key, required this.video});
+  const VideoSurface({super.key, required this.video, this.onProgress});
 
   final Video video;
+
+  /// Báo vị trí phát hiện tại để màn hình xem lưu thời lượng đã xem.
+  final ValueChanged<VideoPlaybackProgress>? onProgress;
 
   @override
   State<VideoSurface> createState() => _VideoSurfaceState();
@@ -19,6 +29,7 @@ class _VideoSurfaceState extends State<VideoSurface> {
   VideoPlayerController? _controller;
   bool _initialized = false;
   bool _failed = false;
+  Duration _lastReportedPosition = Duration.zero;
 
   String? get _url => widget.video.videoUrl;
 
@@ -36,6 +47,7 @@ class _VideoSurfaceState extends State<VideoSurface> {
       _controller = null;
       _initialized = false;
       _failed = false;
+      _lastReportedPosition = Duration.zero;
       _initialize();
     }
   }
@@ -64,6 +76,18 @@ class _VideoSurfaceState extends State<VideoSurface> {
   }
 
   void _onPlayerChanged() {
+    final controller = _controller;
+    if (controller != null) {
+      final value = controller.value;
+      final position = value.position;
+      final delta = (position - _lastReportedPosition).abs();
+      if (delta >= const Duration(seconds: 1)) {
+        _lastReportedPosition = position;
+        widget.onProgress?.call(
+          VideoPlaybackProgress(position: position, duration: value.duration),
+        );
+      }
+    }
     if (mounted) setState(() {});
   }
 

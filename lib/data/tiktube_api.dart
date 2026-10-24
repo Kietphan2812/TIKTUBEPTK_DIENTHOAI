@@ -6,6 +6,7 @@ import '../models/channel.dart';
 import '../models/comment.dart';
 import '../models/creator_stats.dart';
 import '../models/profile.dart';
+import '../models/recommended_feed.dart';
 import '../models/video.dart';
 import '../models/watch_history_item.dart';
 
@@ -14,6 +15,14 @@ import '../models/watch_history_item.dart';
 /// Có thể thay bằng bản giả lập trong test, hoặc `ApiClient` thật.
 abstract interface class TikTubeApi {
   Future<List<Video>> fetchVideos();
+
+  /// Feed cá nhân hóa từ lịch sử xem, like, bình luận, danh mục/hashtag và
+  /// kênh đã đăng ký. Người chưa có lịch sử sẽ nhận tín hiệu xu hướng.
+  Future<RecommendedFeed> fetchForYouFeed({
+    int limit = 24,
+    int days = 30,
+    String? category,
+  });
 
   /// Video được xếp hạng bởi hệ thống xu hướng từ dữ liệu Neon.
   Future<List<Video>> fetchTrendingVideos({
@@ -40,6 +49,13 @@ abstract interface class TikTubeApi {
   Future<int> setLike(String videoId, {required bool liked});
 
   Future<void> registerView(String videoId);
+
+  /// Ghi thời lượng đã xem để cải thiện gợi ý và mức độ hoàn thành video.
+  Future<void> recordWatchProgress(
+    String videoId, {
+    required int watchedSeconds,
+    required int durationSeconds,
+  });
 
   // ---------------------------------------------------------------------------
   // Video / Cloudinary

@@ -118,6 +118,99 @@ void main() {
     },
   );
 
+  test(
+    'ApiClient.fetchForYouFeed đọc điểm gợi ý và metadata từ Neon',
+    () async {
+      final client = MockClient((http.Request request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, '/api/feed/for-you');
+        expect(request.url.queryParameters['limit'], '12');
+        expect(request.url.queryParameters['days'], '30');
+        expect(request.url.queryParameters['category'], 'Gaming');
+        expect(request.headers['authorization'], 'Bearer token-feed');
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'items': <Object?>[
+              <String, Object?>{
+                'id': 'for-you-1',
+                'title': 'Video cùng sở thích',
+                'channel': 'PTK',
+                'handle': '@ptk',
+                'views': 320,
+                'date': '24/10/2026',
+                'durationSeconds': 120,
+                'category': 'Gaming',
+                'colors': <String>['#111111', '#222222'],
+                'isLive': false,
+                'subscribed': true,
+                'recommendationScore': 812,
+                'recommendationReason': 'subscription',
+              },
+            ],
+            'count': 1,
+            'personalized': true,
+            'historySignals': 6,
+            'windowDays': 30,
+            'forDate': '2026-10-24',
+            'algorithm': 'tiktube_for_you_v1',
+            'reason': 'history',
+          }),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json; charset=utf-8',
+          },
+        );
+      });
+
+      final api = ApiClient(client: client, baseUrl: 'http://localhost:8787');
+      api.setAuthToken('token-feed');
+      final feed = await api.fetchForYouFeed(
+        limit: 12,
+        days: 30,
+        category: 'Gaming',
+      );
+
+      expect(feed.videos, hasLength(1));
+      expect(feed.videos.single.subscribed, isTrue);
+      expect(feed.videos.single.recommendationScore, 812);
+      expect(feed.videos.single.recommendationReason, 'subscription');
+      expect(feed.personalized, isTrue);
+      expect(feed.historySignals, 6);
+      expect(feed.windowDays, 30);
+      expect(feed.forDate, '2026-10-24');
+    },
+  );
+
+  test('ApiClient.recordWatchProgress gửi thời lượng đã xem', () async {
+    final client = MockClient((http.Request request) async {
+      expect(request.method, 'POST');
+      expect(request.url.path, '/api/videos/video-1/watch-progress');
+      expect(request.headers['authorization'], 'Bearer token-watch');
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      expect(body['watchedSeconds'], 42);
+      expect(body['durationSeconds'], 120);
+      return http.Response(
+        jsonEncode(<String, Object?>{
+          'updated': true,
+          'watchedSeconds': 42,
+          'durationSeconds': 120,
+        }),
+        200,
+        headers: <String, String>{
+          'content-type': 'application/json; charset=utf-8',
+        },
+      );
+    });
+
+    final api = ApiClient(client: client, baseUrl: 'http://localhost:8787');
+    api.setAuthToken('token-watch');
+    await api.recordWatchProgress(
+      'video-1',
+      watchedSeconds: 42,
+      durationSeconds: 120,
+    );
+  });
+
   test('ApiClient.fetchTags lấy tag theo danh mục và bỏ dấu thăng', () async {
     final client = MockClient((http.Request request) async {
       expect(request.method, 'GET');

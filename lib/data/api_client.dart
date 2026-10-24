@@ -9,6 +9,7 @@ import '../models/channel.dart';
 import '../models/comment.dart';
 import '../models/creator_stats.dart';
 import '../models/profile.dart';
+import '../models/recommended_feed.dart';
 import '../models/video.dart';
 import '../models/watch_history_item.dart';
 import 'tiktube_api.dart';
@@ -63,6 +64,25 @@ class ApiClient implements TikTubeApi {
   Future<List<Video>> fetchVideos() async {
     final data = await _request('GET', _uri('/api/videos', {'limit': '100'}));
     return _videoList(data);
+  }
+
+  @override
+  Future<RecommendedFeed> fetchForYouFeed({
+    int limit = 24,
+    int days = 30,
+    String? category,
+  }) async {
+    final String trimmedCategory = category?.trim() ?? '';
+    final data = await _request(
+      'GET',
+      _uri('/api/feed/for-you', <String, String>{
+        'limit': '$limit',
+        'days': '$days',
+        if (trimmedCategory.isNotEmpty && trimmedCategory != 'Tất cả')
+          'category': trimmedCategory,
+      }),
+    );
+    return RecommendedFeed.fromJson(data);
   }
 
   @override
@@ -152,6 +172,22 @@ class ApiClient implements TikTubeApi {
       'POST',
       _uri('/api/videos/$videoId/view'),
       body: const <String, Object?>{},
+    );
+  }
+
+  @override
+  Future<void> recordWatchProgress(
+    String videoId, {
+    required int watchedSeconds,
+    required int durationSeconds,
+  }) async {
+    await _request(
+      'POST',
+      _uri('/api/videos/$videoId/watch-progress'),
+      body: <String, Object?>{
+        'watchedSeconds': watchedSeconds,
+        'durationSeconds': durationSeconds,
+      },
     );
   }
 

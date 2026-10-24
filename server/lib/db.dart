@@ -61,6 +61,29 @@ on app_sessions (expires_at)
 alter table nguoi_dung
 add column if not exists ten_hien_thi varchar(60)
 ''');
+
+    // Lưu thời lượng đã xem để gợi ý video cùng chủ đề chính xác hơn. Hai cột
+    // này chỉ bổ sung cho bảng lịch sử của web, không thay đổi dữ liệu cũ.
+    await _pool.execute('''
+alter table lich_su_xem
+add column if not exists thoi_luong_xem double precision not null default 0
+''');
+    await _pool.execute('''
+alter table lich_su_xem
+add column if not exists thoi_luong_video double precision not null default 0
+''');
+    await _pool.execute('''
+create index if not exists app_lich_su_xem_user_time_idx
+on lich_su_xem (nguoi_dung_id, thoi_gian_xem desc)
+''');
+    await _pool.execute('''
+create index if not exists app_luot_thich_user_time_idx
+on luot_thich (nguoi_dung_id, ngay_tao desc)
+''');
+    await _pool.execute('''
+create index if not exists app_binh_luan_user_time_idx
+on binh_luan (nguoi_dung_id, ngay_tao desc)
+''');
   }
 
   // ---------------------------------------------------------------------------
@@ -386,6 +409,333 @@ limit @limit
     return result.map(_trendingVideoFromRow).toList();
   }
 
+  /// Feed "Dành cho bạn" dựa trên hành vi thật của người dùng.
+  ///
+  /// Tín hiệu được lấy từ `lich_su_xem` (có cả thời lượng đã xem), lượt thích,
+  /// bình luận, danh mục, hashtag trong `video.mo_ta`/`the_tag` và các kênh đã
+  /// đăng ký. Video thuộc kênh đã đăng ký được xếp trước trong 45 ngày gần đây;
+  /// sau đó mới xếp theo điểm sở thích + tín hiệu xu hướng + độ mới. Cửa sổ hành
+  /// vi mặc định là 30 ngày và được làm mới theo ngày.
+  Future<Map<String, Object?>> listForYouFeed({
+    String userKey = '',
+    int limit = 24,
+    int days = 30,
+    String? category,
+  }) async {
+    final int safeLimit = limit.clamp(1, 40).toInt();
+    final int historyDays = days.clamp(7, 90).toInt();
+    final String normalizedCategory = (category ?? '').trim();
+    final bool hasCategory =
+        normalizedCategory.isNotEmpty && normalizedCategory != 'Tất cả';
+    final int? currentUserId = await _userIdForKey(userKey);
+
+    if (currentUserId == null) {
+      final items = await listTrendingVideos(
+        days: 7,
+        limit: safeLimit,
+        category: hasCategory ? normalizedCategory : null,
+      );
+      return <String, Object?>{
+        'items': items,
+        'count': items.length,
+        'personalized': false,
+        'historySignals': 0,
+        'windowDays': 7,
+        'forDate': _todayForFeed(),
+        'algorithm': 'tiktube_trending_v1',
+        'reason': 'guest',
+        'signals': const <String>[
+          'views',
+          'likes',
+          'comments',
+          'recentViewers',
+          'subscribers',
+          'freshness',
+        ],
+      };
+    }
+
+    final stats = await _pool.execute(
+      Sql.named('''
+select current_date::text,
+       (
+         select count(*)::int
+         from lich_su_xem lx
+         where lx.nguoi_dung_id = @currentUserId
+           and lx.thoi_gian_xem >= now() - make_interval(days => @historyDays::int)
+       )
+'''),
+      parameters: <String, Object?>{
+        'currentUserId': currentUserId,
+        'historyDays': historyDays,
+      },
+    );
+    final String forDate =
+        stats.isEmpty ? _todayForFeed() : stats.first[0]?.toString() ?? '';
+    final int historySignals = stats.isEmpty ? 0 : _asInt(stats.first[1]) ?? 0;
+
+    final filters = <String>["v.trang_thai in ('da_duyet', 'approved')"];
+    final params = <String, Object?>{
+      'currentUserId': currentUserId,
+      'historyDays': historyDays,
+      'decayDays': 14.0,
+      'limit': safeLimit,
+    };
+    if (hasCategory) {
+      filters.add('dm.ten_danh_muc = @category');
+      params['category'] = normalizedCategory;
+    }
+
+    final result = await _pool.execute(
+      Sql.named('''
+with history as (
+  select lx.video_id,
+         lx.thoi_gian_xem as event_at,
+         (
+           1.0 + 2.0 * case
+             when coalesce(lx.thoi_luong_video, 0) > 0
+             then least(
+               1.0,
+               greatest(
+                 0.0,
+                 coalesce(lx.thoi_luong_xem, 0) / lx.thoi_luong_video
+               )
+             )
+             else 0.5
+           end
+         )::numeric as weight
+  from lich_su_xem lx
+  where lx.nguoi_dung_id = @currentUserId
+    and lx.thoi_gian_xem >= now() - make_interval(days => @historyDays::int)
+  union all
+  select lt.video_id, lt.ngay_tao, 4.0::numeric
+  from luot_thich lt
+  where lt.nguoi_dung_id = @currentUserId
+    and lt.ngay_tao >= now() - make_interval(days => @historyDays::int)
+  union all
+  select bl.video_id, bl.ngay_tao, 5.0::numeric
+  from binh_luan bl
+  where bl.nguoi_dung_id = @currentUserId
+    and bl.ngay_tao >= now() - make_interval(days => @historyDays::int)
+),
+history_videos as (
+  select h.video_id, h.event_at, h.weight,
+         v.danh_muc_id, coalesce(v.mo_ta, '') as mo_ta, v.tag_id
+  from history h
+  join video v on v.video_id = h.video_id
+),
+category_affinity as (
+  select hv.danh_muc_id,
+         sum(
+           hv.weight * exp(
+             -greatest(
+               extract(epoch from (now() - hv.event_at))::double precision,
+               0.0
+             ) / 86400.0 / @decayDays::double precision
+           )
+         ) as affinity
+  from history_videos hv
+  where hv.danh_muc_id is not null
+  group by hv.danh_muc_id
+),
+history_tags as (
+  select lower(regexp_replace(m.match[1], '[.,;:!?]+\$', '')) as tag,
+         hv.weight, hv.event_at
+  from history_videos hv
+  cross join lateral regexp_matches(
+    hv.mo_ta,
+    '#([^[:space:]#]+)',
+    'g'
+  ) as m(match)
+  union all
+  select lower(regexp_replace(tt.ten_tag, '^#+', '')),
+         hv.weight, hv.event_at
+  from history_videos hv
+  join the_tag tt on tt.tag_id = hv.tag_id
+  where hv.tag_id is not null
+),
+tag_affinity as (
+  select tag,
+         sum(
+           weight * exp(
+             -greatest(
+               extract(epoch from (now() - event_at))::double precision,
+               0.0
+             ) / 86400.0 / @decayDays::double precision
+           )
+         ) as affinity
+  from history_tags
+  where tag <> ''
+  group by tag
+),
+metrics as (
+  select v.video_id,
+         v.danh_muc_id,
+         greatest(coalesce(v.luot_xem, 0), 0)::numeric as total_views,
+         (
+           select count(*)::int
+           from luot_thich lt2
+           where lt2.video_id = v.video_id
+         )::numeric as like_count,
+         (
+           select count(*)::int
+           from binh_luan bl2
+           where bl2.video_id = v.video_id
+         )::numeric as comment_count,
+         (
+           select count(distinct lx2.nguoi_dung_id)::int
+           from lich_su_xem lx2
+           where lx2.video_id = v.video_id
+             and lx2.thoi_gian_xem >= now() - make_interval(days => 7)
+         )::numeric as recent_view_count,
+         (
+           select count(*)::int
+           from dang_ky_kenh dk
+           where dk.kenh_id = v.nguoi_dung_id
+         )::numeric as channel_subscribers,
+         greatest(
+           extract(epoch from (now() - coalesce(v.ngay_tao, now())))
+             ::double precision / 86400.0,
+           0.0
+         )::numeric as age_days,
+         exists(
+           select 1 from dang_ky_kenh dks
+           where dks.kenh_id = v.nguoi_dung_id
+             and dks.nguoi_dung_id = @currentUserId
+         ) as is_subscribed,
+         (
+           select max(lx3.thoi_gian_xem)
+           from lich_su_xem lx3
+           where lx3.video_id = v.video_id
+             and lx3.nguoi_dung_id = @currentUserId
+         ) as last_watched_at
+  from video v
+  where v.trang_thai in ('da_duyet', 'approved')
+),
+candidate_tags as (
+  select v.video_id,
+         lower(regexp_replace(m.match[1], '[.,;:!?]+\$', '')) as tag
+  from video v
+  cross join lateral regexp_matches(
+    coalesce(v.mo_ta, ''),
+    '#([^[:space:]#]+)',
+    'g'
+  ) as m(match)
+  union
+  select v.video_id,
+         lower(regexp_replace(tt.ten_tag, '^#+', '')) as tag
+  from video v
+  join the_tag tt on tt.tag_id = v.tag_id
+  where v.tag_id is not null
+),
+tag_scores as (
+  select ct.video_id, sum(ta.affinity) as tag_score
+  from candidate_tags ct
+  join tag_affinity ta on ta.tag = ct.tag
+  where ct.tag <> ''
+  group by ct.video_id
+),
+candidate_scores as (
+  select m.video_id,
+         m.is_subscribed,
+         m.age_days,
+         m.last_watched_at,
+         coalesce(ca.affinity, 0) as category_affinity,
+         coalesce(ts.tag_score, 0) as tag_score,
+         greatest(
+           0::bigint,
+           round(
+             100.0 * (
+               ln(1.0 + coalesce(ca.affinity, 0)) * 4.0
+               + ln(1.0 + coalesce(ts.tag_score, 0)) * 3.0
+               + ln(1.0 + m.like_count) * 1.2
+               + ln(1.0 + m.comment_count) * 1.5
+               + ln(1.0 + m.recent_view_count) * 2.0
+               + ln(1.0 + m.total_views) * 0.4
+               + ln(1.0 + m.channel_subscribers) * 0.3
+               + 1.0 / (m.age_days + 1.0)
+             )
+             + case when m.is_subscribed then 18.0 else 0.0 end
+             - case
+                 when m.last_watched_at >= now() - interval '2 days'
+                 then 4.0
+                 else 0.0
+               end
+           )::bigint
+         ) as recommendation_score
+  from metrics m
+  left join category_affinity ca on ca.danh_muc_id = m.danh_muc_id
+  left join tag_scores ts on ts.video_id = m.video_id
+)
+select $_videoSelect,
+       cs.recommendation_score,
+       case
+         when cs.is_subscribed then 'subscription'
+         when cs.category_affinity > 0 and cs.tag_score > 0 then 'category_tag'
+         when cs.category_affinity > 0 then 'category'
+         when cs.tag_score > 0 then 'tag'
+         else 'trending'
+       end as recommendation_reason
+from candidate_scores cs
+join video v on v.video_id = cs.video_id
+join nguoi_dung u on u.nguoi_dung_id = v.nguoi_dung_id
+left join danh_muc dm on dm.danh_muc_id = v.danh_muc_id
+left join the_tag tt on tt.tag_id = v.tag_id
+where ${filters.join(' and ')}
+order by
+  (cs.is_subscribed and cs.age_days <= 45) desc,
+  cs.recommendation_score desc,
+  md5(v.video_id::text || current_date::text),
+  v.ngay_tao desc nulls last,
+  v.video_id desc
+limit @limit
+'''),
+      parameters: params,
+    );
+
+    if (result.isEmpty) {
+      final fallback = await listVideos(
+        category: hasCategory ? normalizedCategory : null,
+        limit: safeLimit,
+        userKey: userKey,
+      );
+      return <String, Object?>{
+        'items': fallback,
+        'count': fallback.length,
+        'personalized': false,
+        'historySignals': historySignals,
+        'windowDays': historyDays,
+        'forDate': forDate,
+        'algorithm': 'tiktube_for_you_v1',
+        'reason': 'fallback',
+        'signals': const <String>['freshness'],
+      };
+    }
+
+    final items = result.map(_forYouVideoFromRow).toList();
+    return <String, Object?>{
+      'items': items,
+      'count': items.length,
+      'personalized': historySignals > 0,
+      'historySignals': historySignals,
+      'windowDays': historyDays,
+      'forDate': forDate,
+      'algorithm': 'tiktube_for_you_v1',
+      'reason': historySignals > 0 ? 'history' : 'subscriptions_and_trending',
+      'signals': const <String>[
+        'watchHistory',
+        'watchCompletion',
+        'likes',
+        'comments',
+        'categories',
+        'hashtags',
+        'subscriptions',
+        'recentViewers',
+        'freshness',
+      ],
+    };
+  }
+
   Future<Map<String, Object?>?> findVideo(
     String id, {
     String userKey = '',
@@ -660,6 +1010,57 @@ values (@actorId, @videoId, now())
 
       return <String, Object?>{'viewCount': updated.first[0]};
     });
+  }
+
+  /// Cập nhật thời lượng đã xem cho lần xem gần nhất của người dùng.
+  ///
+  /// `registerView` tạo dòng lịch sử trước; hàm này chỉ cập nhật dòng mới nhất
+  /// nên không làm tăng lượt xem lần thứ hai. Giá trị được lấy theo mức lớn
+  /// nhất để tua lại hoặc thoát giữa chừng không làm giảm tín hiệu gợi ý.
+  Future<bool> recordWatchProgress({
+    required String videoId,
+    required String userKey,
+    required int watchedSeconds,
+    required int durationSeconds,
+  }) async {
+    final id = _intId(videoId);
+    if (id == null || userKey.trim().isEmpty) return false;
+    final currentUserId = await _userIdForKey(userKey);
+    if (currentUserId == null) return false;
+
+    final int safeWatched = watchedSeconds.clamp(0, 24 * 60 * 60).toInt();
+    final int safeDuration = durationSeconds.clamp(0, 24 * 60 * 60).toInt();
+    if (safeWatched <= 0) return false;
+
+    final result = await _pool.execute(
+      Sql.named('''
+update lich_su_xem
+set thoi_luong_xem = greatest(
+      coalesce(thoi_luong_xem, 0),
+      least(@watchedSeconds::double precision, 86400.0)
+    ),
+    thoi_luong_video = case
+      when @durationSeconds > 0
+      then least(@durationSeconds::double precision, 86400.0)
+      else coalesce(thoi_luong_video, 0)
+    end
+where lich_su_id = (
+  select lich_su_id
+  from lich_su_xem
+  where nguoi_dung_id = @currentUserId
+    and video_id = @videoId
+  order by thoi_gian_xem desc nulls last, lich_su_id desc
+  limit 1
+)
+'''),
+      parameters: <String, Object?>{
+        'currentUserId': currentUserId,
+        'videoId': id,
+        'watchedSeconds': safeWatched,
+        'durationSeconds': safeDuration,
+      },
+    );
+    return result.affectedRows > 0;
   }
 
   // ---------------------------------------------------------------------------
@@ -1378,6 +1779,20 @@ on conflict (nguoi_dung_id, ngay) do update set
     video['trendScore'] = _asInt(row[17]) ?? 0;
     video['recentViews'] = _asInt(row[18]) ?? 0;
     return video;
+  }
+
+  static Map<String, Object?> _forYouVideoFromRow(ResultRow row) {
+    final video = _videoFromRow(row);
+    video['recommendationScore'] = _asInt(row[17]) ?? 0;
+    video['recommendationReason'] = row[18]?.toString() ?? 'trending';
+    return video;
+  }
+
+  static String _todayForFeed() {
+    final now = DateTime.now().toUtc();
+    return '${now.year.toString().padLeft(4, '0')}-'
+        '${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
   }
 
   static Map<String, Object?> _videoFromRow(ResultRow row) {

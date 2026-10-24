@@ -11,6 +11,7 @@ import 'package:flutter_app_ptk/models/channel.dart';
 import 'package:flutter_app_ptk/models/comment.dart';
 import 'package:flutter_app_ptk/models/creator_stats.dart';
 import 'package:flutter_app_ptk/models/profile.dart';
+import 'package:flutter_app_ptk/models/recommended_feed.dart';
 import 'package:flutter_app_ptk/models/video.dart';
 import 'package:flutter_app_ptk/models/watch_history_item.dart';
 import 'package:flutter_app_ptk/widgets/video_card.dart';
@@ -20,6 +21,21 @@ import 'package:flutter_test/flutter_test.dart';
 class _OfflineApi implements TikTubeApi {
   @override
   Future<List<Video>> fetchVideos() async => kLatestVideos;
+
+  @override
+  Future<RecommendedFeed> fetchForYouFeed({
+    int limit = 24,
+    int days = 30,
+    String? category,
+  }) async => RecommendedFeed(
+    videos: kLatestVideos.take(limit).toList(),
+    personalized: true,
+    historySignals: 3,
+    windowDays: days,
+    forDate: '2026-10-24',
+    algorithm: 'test_for_you',
+    reason: 'history',
+  );
 
   @override
   Future<List<Video>> fetchTrendingVideos({
@@ -62,6 +78,13 @@ class _OfflineApi implements TikTubeApi {
 
   @override
   Future<void> registerView(String videoId) async {}
+
+  @override
+  Future<void> recordWatchProgress(
+    String videoId, {
+    required int watchedSeconds,
+    required int durationSeconds,
+  }) async {}
 
   @override
   Future<Video> uploadVideo({
@@ -183,11 +206,42 @@ class _BrokenApi extends _OfflineApi {
   Future<List<Video>> fetchVideos() async => throw Exception('offline');
 
   @override
+  Future<RecommendedFeed> fetchForYouFeed({
+    int limit = 24,
+    int days = 30,
+    String? category,
+  }) async => throw Exception('offline');
+
+  @override
   Future<List<Video>> fetchTrendingVideos({
     int limit = 12,
     int days = 7,
     String? category,
   }) async => throw Exception('offline');
+}
+
+class _PriorityApi extends _OfflineApi {
+  @override
+  Future<RecommendedFeed> fetchForYouFeed({
+    int limit = 24,
+    int days = 30,
+    String? category,
+  }) async => RecommendedFeed(
+    videos: <Video>[
+      kLatestVideos.first.copyWith(
+        subscribed: true,
+        recommendationScore: 999,
+        recommendationReason: 'subscription',
+      ),
+      ...kLatestVideos.skip(1).take(3),
+    ],
+    personalized: true,
+    historySignals: 8,
+    windowDays: days,
+    forDate: '2026-10-24',
+    algorithm: 'test_for_you',
+    reason: 'history',
+  );
 }
 
 class _BadLoginApi extends _OfflineApi {
@@ -335,9 +389,33 @@ void main() {
 
     expect(find.text('Xin chào, kiepthan4'), findsNothing);
     expect(find.text('Video xu hướng'), findsOneWidget);
-    expect(find.text('Video mới'), findsOneWidget);
+    expect(find.text('Dành cho bạn'), findsOneWidget);
+    expect(find.text('MỚI NHẤT'), findsOneWidget);
     expect(find.text('Tất cả'), findsOneWidget);
     expect(find.text('Tài khoản'), findsOneWidget);
+  });
+
+  testWidgets('Dành cho bạn ưu tiên video từ kênh đã đăng ký', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      PtkTubeApp(api: _PriorityApi(), authRequired: false),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Dành cho bạn'), findsOneWidget);
+    expect(find.textContaining('Kênh đã đăng ký được ưu tiên'), findsOneWidget);
+    expect(find.text('Đã đăng ký'), findsOneWidget);
+
+    await tester.tap(find.text('MỚI NHẤT'));
+    await tester.pumpAndSettle();
+    expect(find.text('Video mới'), findsOneWidget);
+    expect(find.text('Đã đăng ký'), findsNothing);
   });
 
   testWidgets('Trang chủ hiển thị giao diện điện thoại không bị tràn', (
@@ -354,7 +432,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.text('Video mới'), findsOneWidget);
+    expect(find.text('Dành cho bạn'), findsNWidgets(2));
     expect(find.text('Trang chủ'), findsOneWidget);
     expect(find.text('Đăng'), findsOneWidget);
     expect(find.text('Tài khoản'), findsOneWidget);
@@ -446,6 +524,8 @@ void main() {
     await tester.tap(find.byTooltip('Quay lại'));
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.byType(VideoCard).first);
+    await tester.pumpAndSettle();
     await tester.tap(find.byType(VideoCard).first);
     await tester.pumpAndSettle();
     expect(find.text('Bình luận'), findsOneWidget);

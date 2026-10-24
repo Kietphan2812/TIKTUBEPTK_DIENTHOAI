@@ -32,7 +32,7 @@ class WatchScreen extends StatefulWidget {
   State<WatchScreen> createState() => _WatchScreenState();
 }
 
-class _WatchScreenState extends State<WatchScreen> {
+class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   bool _subscribed = false;
   bool _liked = false;
   int _likeCount = 0;
@@ -43,14 +43,64 @@ class _WatchScreenState extends State<WatchScreen> {
   bool _commentsLoading = true;
   String? _commentsError;
 
+  Timer? _progressTimer;
+  int _watchedSeconds = 0;
+  int _durationSeconds = 0;
+  int _lastSavedSeconds = 0;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _subscribed = widget.video.subscribed;
     _likeCount = widget.video.likeCount;
     _subscriberCount = widget.video.subscriberCount;
+    _durationSeconds = widget.video.duration.inSeconds;
     unawaited(_loadComments());
     unawaited(_registerView());
+    _progressTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => _saveWatchProgress(),
+    );
+  }
+
+  void _handlePlaybackProgress(VideoPlaybackProgress progress) {
+    final int position = progress.position.inSeconds;
+    final int duration = progress.duration.inSeconds;
+    if (position > _watchedSeconds) _watchedSeconds = position;
+    if (duration > 0) _durationSeconds = duration;
+  }
+
+  void _saveWatchProgress({bool force = false}) {
+    final int watched = _watchedSeconds;
+    if (watched <= 0) return;
+    if (!force && watched < _lastSavedSeconds + 5) return;
+    _lastSavedSeconds = watched;
+    final int duration = _durationSeconds > 0
+        ? _durationSeconds
+        : widget.video.duration.inSeconds;
+    unawaited(_persistWatchProgress(watched, duration));
+  }
+
+  Future<void> _persistWatchProgress(int watched, int duration) async {
+    try {
+      await widget.api.recordWatchProgress(
+        widget.video.id,
+        watchedSeconds: watched,
+        durationSeconds: duration,
+      );
+    } catch (_) {
+      // Không chặn việc xem video nếu API tạm thời không phản hồi.
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      _saveWatchProgress(force: true);
+    }
   }
 
   Future<void> _loadComments() async {
@@ -137,6 +187,9 @@ class _WatchScreenState extends State<WatchScreen> {
 
   @override
   void dispose() {
+    _progressTimer?.cancel();
+    _saveWatchProgress(force: true);
+    WidgetsBinding.instance.removeObserver(this);
     _commentController.dispose();
     super.dispose();
   }
@@ -222,14 +275,44 @@ class _WatchScreenState extends State<WatchScreen> {
     unawaited(_syncLike(next));
   }
 
+  List<Video> _relatedVideos() {
+    final Set<String> currentTags = widget.video.tags
+        .map((String tag) => tag.toLowerCase())
+        .toSet();
+    final List<Video> candidates = widget.related
+        .where((Video video) => video.id != widget.video.id)
+        .toList();
+
+    int score(Video video) {
+      var value = 0;
+      if (video.category == widget.video.category) value += 6;
+      if (video.channelId.isNotEmpty &&
+          video.channelId == widget.video.channelId) {
+        value += 3;
+      } else if (video.channel == widget.video.channel) {
+        value += 3;
+      }
+      for (final String tag in video.tags) {
+        if (currentTags.contains(tag.toLowerCase())) value += 2;
+      }
+      return value;
+    }
+
+    candidates.sort((Video a, Video b) {
+      final int byType = score(b).compareTo(score(a));
+      if (byType != 0) return byType;
+      final int byViews = b.views.compareTo(a.views);
+      if (byViews != 0) return byViews;
+      return b.id.compareTo(a.id);
+    });
+    return candidates.take(8).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     final String commentAuthor = _commentAuthor;
-    final List<Video> related = widget.related
-        .where((Video v) => v.id != widget.video.id)
-        .take(8)
-        .toList();
+    final List<Video> related = _relatedVideos();
 
     return Scaffold(
       backgroundColor: p.bg,
@@ -265,6 +348,7 @@ class _WatchScreenState extends State<WatchScreen> {
                     onAddComment: _addComment,
                     onDeleteComment: _deleteComment,
                     onNotify: _notify,
+                    onProgress: _handlePlaybackProgress,
                   );
 
                   final Widget sidebar = _RelatedList(
@@ -340,6 +424,7 @@ class _MainColumn extends StatelessWidget {
     required this.onAddComment,
     required this.onDeleteComment,
     required this.onNotify,
+    required this.onProgress,
   });
 
   final Video video;
@@ -358,6 +443,7 @@ class _MainColumn extends StatelessWidget {
   final VoidCallback onAddComment;
   final ValueChanged<Comment> onDeleteComment;
   final ValueChanged<String> onNotify;
+  final ValueChanged<VideoPlaybackProgress> onProgress;
 
   @override
   Widget build(BuildContext context) {
@@ -371,7 +457,7 @@ class _MainColumn extends StatelessWidget {
           borderRadius: BorderRadius.circular(compact ? 8 : 12),
           child: Stack(
             children: <Widget>[
-              VideoSurface(video: video),
+              VideoSurface(video: video, onProgress: onProgress),
               if (!video.isPlayable)
                 Positioned.fill(
                   child: IgnorePointer(

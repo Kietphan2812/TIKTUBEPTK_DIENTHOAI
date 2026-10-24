@@ -4,7 +4,7 @@ Bản dựng lại giao diện **TIKTUBE** (trang xem & chia sẻ video của PT
 kèm REST API viết bằng Dart, dùng chung database Neon với web app và lưu video trên
 Cloudinary.
 
-Phiên bản Android đang phát hành: **1.0.6+7** (APK cài trực tiếp, trỏ API
+Phiên bản Android đang phát hành: **1.0.7+8** (APK cài trực tiếp, trỏ API
 `https://tiktube-api.onrender.com`).
 
 ## Kiến trúc
@@ -39,10 +39,11 @@ Flutter ── gửi file ──► Dart server ── ký upload ──► Clou
   đăng nhập được trên cả web lẫn app. Phiên là token ngẫu nhiên 256-bit; server
   chỉ lưu SHA-256 của token trong `app_sessions`.
 - Flutter giữ token trong `localStorage` (web) và gửi qua header `Authorization`.
-- Nhãn cạnh *Video mới* hiển thị **“Neon SQL”** khi tải được dữ liệu, hoặc
-  **“Chưa kết nối”** khi API không phản hồi.
-- Trang chủ tự tải lại mỗi **10 giây** (và khi quay lại tab) để video vừa đăng từ
-  web xuất hiện mà không cần đăng nhập lại.
+- Nhãn cạnh feed **Dành cho bạn / Video mới** hiển thị **“Neon SQL”** khi tải được
+  dữ liệu, hoặc **“Chưa kết nối”** khi API không phản hồi.
+- Trang chủ mặc định mở **Dành cho bạn**; chuyển sang **Mới nhất** để xem đúng thứ
+  tự thời gian. Feed mới được tải lại mỗi **10 giây**; gợi ý cá nhân hóa được tính
+  lại mỗi **30 giây**, sau khi xem video hoặc khi quay lại tab.
 
 ## Dữ liệu thật đang dùng
 
@@ -50,9 +51,10 @@ Flutter ── gửi file ──► Dart server ── ký upload ──► Clou
 |---|---|
 | Đăng nhập / Đăng ký | `nguoi_dung` + `app_sessions` — tạo phiên thật |
 | Trang chủ | `video` + `nguoi_dung` + `danh_muc` — video đã duyệt |
+| Dành cho bạn | `lich_su_xem` (kèm thời lượng xem), `luot_thich`, `binh_luan`, `video`, `danh_muc`, `the_tag`, `dang_ky_kenh` — xếp hạng bằng SQL |
 | Video xu hướng | `video`, `luot_thich`, `binh_luan`, `lich_su_xem`, `dang_ky_kenh` — xếp hạng bằng SQL |
 | Video từ kênh đã đăng ký | `video` + `dang_ky_kenh` — chỉ video đã duyệt của kênh đang theo dõi |
-| Xem video | `video`, `binh_luan`, `luot_thich`, `lich_su_xem`, `dang_ky_kenh` |
+| Xem video | `video`, `binh_luan`, `luot_thich`, `lich_su_xem`, `dang_ky_kenh`; lưu thêm thời lượng đã xem/phần trăm hoàn thành |
 | Đăng video | `POST /api/videos/upload` — file đi qua server, lưu Cloudinary, ghi `video` + `lich_su_dang_video` + `kiem_duyet_video` |
 | Gợi ý thẻ tag | `the_tag` + `danh_muc` — `GET /api/tags?category=...`, đổi danh mục sẽ tải lại đúng tag của danh mục đó |
 | Đăng ký kênh | `dang_ky_kenh` (kênh chính là `nguoi_dung`) |
@@ -96,6 +98,49 @@ score = 100 × (
   đăng. App tự làm mới mỗi 10 giây và có màn hình **Xu hướng** riêng để đổi kỳ
   xem, lọc danh mục, xem điểm và số người xem gần đây.
 
+### Cách tính feed “Dành cho bạn”
+
+`GET /api/feed/for-you` tính trực tiếp trên Neon, không lưu snapshot gợi ý giả:
+
+- Cửa sổ hành vi mặc định **30 ngày**, suy giảm theo thời gian với bán thời gian
+  **14 ngày**.
+- Mỗi lần xem có trọng số `1 + 2 × tỷ_lệ_hoàn_thành`; tỷ lệ lấy từ
+  `lich_su_xem.thoi_luong_xem / lich_su_xem.thoi_luong_video` (video cũ chưa có
+  thời lượng được tính mức trung bình).
+- Lượt thích có trọng số **4**, bình luận có trọng số **5**.
+- Điểm sở thích cộng dồn theo **danh mục** và **hashtag**; hashtag lấy từ
+  `video.mo_ta` (dạng `#tag`) và `the_tag.ten_tag` nếu video có `tag`.
+- Video thuộc kênh người dùng đã đăng ký được **xếp trước** nếu còn trong
+  **45 ngày** gần đây; sau đó mới xếp theo điểm sở thích, tín hiệu xu hướng toàn
+  app (lượt xem, like, bình luận, người xem gần đây, người đăng ký kênh) và độ
+  mới.
+- Video vừa xem trong 2 ngày bị trừ nhẹ điểm để gợi ý đa dạng hơn. Thứ tự trong
+  ngày có tie-breaker theo `video_id + ngày`, nên không đổi liên tục giữa các lần
+  tải.
+- Người chưa đăng nhập hoặc chưa đủ lịch sử nhận tín hiệu xu hướng + kênh đã
+  đăng ký; response ghi rõ `personalized`, `reason`, `windowDays`, `forDate`.
+- Mỗi item có `recommendationScore` và `recommendationReason`
+  (`subscription`, `category_tag`, `category`, `tag`, `trending`) để kiểm tra.
+- **Video liên quan** trong màn hình xem được ưu tiên theo cùng danh mục, hashtag
+  chung, cùng kênh, rồi mới đến lượt xem.
+
+### Ghi thời lượng xem
+
+Khi phát video, `VideoSurface` báo vị trí hiện tại. Màn hình xem lưu mốc xa nhất
+mỗi 10 giây, khi app bị đưa xuống nền và khi đóng màn hình qua:
+
+```http
+POST /api/videos/<id>/watch-progress
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"watchedSeconds": 42, "durationSeconds": 120}
+```
+
+Server cập nhật dòng `lich_su_xem` gần nhất (không tăng lượt xem lần hai) vào hai
+cột mới `thoi_luong_xem` và `thoi_luong_video`. Hai cột được thêm tự động bằng
+`ensureAppSchema` khi API khởi động hoặc bằng `setup_target_db.dart`.
+
 ## Chạy dự án
 
 ### 1. Cấu hình server
@@ -136,6 +181,8 @@ Script này chỉ:
 
 - tạo bảng `app_sessions` nếu chưa có;
 - thêm cột nullable `nguoi_dung.ten_hien_thi` nếu chưa có;
+- thêm `lich_su_xem.thoi_luong_xem` và `lich_su_xem.thoi_luong_video` (mặc định 0);
+- thêm index cho lịch sử xem / lượt thích / bình luận theo người dùng và thời gian;
 - tạo tài khoản demo `kiepthan4` nếu chưa tồn tại.
 
 Không xoá, không ghi đè người dùng, video, bình luận, lượt thích hay dữ liệu admin
@@ -206,6 +253,7 @@ người dùng thật trong Neon và tự động đăng nhập.
 | GET | `/api/tags?category=...&limit=...` | Thẻ tag đã liên kết với danh mục trong `the_tag` |
 | GET | `/api/videos?limit=...` | Danh sách video đã duyệt |
 | GET | `/api/videos/trending?days=7&limit=12&category=...` | Bảng xếp hạng xu hướng từ SQL (kèm `trendScore`, `recentViews`) |
+| GET | `/api/feed/for-you?days=30&limit=24&category=...` | Feed cá nhân hóa: hành vi + danh mục/hashtag + kênh đã đăng ký + xu hướng; Bearer tùy chọn |
 | GET | `/api/videos/<id>` | Chi tiết video |
 | POST | `/api/videos/upload` | Body là bytes video (tối đa 100 MB) + query `title`, `description`, `category`, `tags`, `age`, `filename`; server ký upload Cloudinary |
 | PATCH | `/api/videos/<id>` | Sửa metadata video |
@@ -215,6 +263,7 @@ người dùng thật trong Neon và tự động đăng nhập.
 | DELETE | `/api/videos/<id>/comments/<commentId>` | Xoá bình luận |
 | POST | `/api/videos/<id>/like` | Like/unlike |
 | POST | `/api/videos/<id>/view` | Ghi lượt xem + lịch sử |
+| POST | `/api/videos/<id>/watch-progress` | `{watchedSeconds, durationSeconds}` — cập nhật thời lượng đã xem, không tăng lượt xem |
 | GET | `/api/channels` | Kênh |
 | GET | `/api/subscriptions` | Kênh đã đăng ký |
 | GET | `/api/feed/subscriptions?limit=30` | Video mới nhất từ các kênh đã đăng ký (cần Bearer token) |
@@ -231,10 +280,12 @@ người dùng thật trong Neon và tự động đăng nhập.
 | PATCH | `/api/me` | Cập nhật tên/email/tuổi |
 
 Các endpoint đọc công khai như `/api/videos`, `/api/categories`, `/api/tags`,
-`/api/videos/trending`, `/api/videos/<id>` vẫn xem được khi chưa đăng nhập.
-Endpoint `/api/feed/subscriptions`, các endpoint ghi (upload, bình luận, like,
-view, đăng ký kênh) và dữ liệu riêng (lịch sử, uploads, stats, thông báo,
-`/api/me`) yêu cầu header:
+`/api/videos/trending`, `/api/feed/for-you`, `/api/videos/<id>` vẫn xem được khi
+chưa đăng nhập. Riêng `/api/feed/for-you`, nếu gửi kèm Bearer token thì feed được
+cá nhân hóa; không có token sẽ trả tín hiệu xu hướng. Endpoint
+`/api/feed/subscriptions`, các endpoint ghi (upload, bình luận, like, view,
+watch-progress, đăng ký kênh) và dữ liệu riêng (lịch sử, uploads, stats, thông
+báo, `/api/me`) yêu cầu header:
 
 ```http
 Authorization: Bearer <token>
@@ -248,7 +299,7 @@ Token có hạn 30 ngày. Đăng xuất sẽ xoá token ở server và trong `lo
 lib/
   auth/            AuthController, AuthScope, lưu phiên localStorage
   data/            ApiClient, TikTubeApi, model parsing
-  models/          Video, Channel, Comment, Profile, AuthSession, CreatorStats, ...
+  models/          Video, RecommendedFeed, Channel, Comment, Profile, AuthSession, ...
   screens/         auth, home, trending, watch, upload, notifications, subscriptions, history, stats, account
   widgets/         data_state (loading/error), video_surface (player), ...
 server/
@@ -277,10 +328,10 @@ flutter build web --release
 cd server && dart analyze
 ```
 
-Hiện có 25 test: parse API, xu hướng + feed đăng ký, thẻ tag theo danh mục,
-đăng nhập + Bearer token, trang chủ, trạng thái lỗi API, thống kê, tìm kiếm,
-responsive, điều hướng, xem video/bình luận, thông báo, upload tiến trình và
-luồng đăng nhập/đăng ký/đăng xuất.
+Hiện có 28 test: parse API, xu hướng + feed đăng ký + feed Dành cho bạn, thời lượng
+xem, thẻ tag theo danh mục, đăng nhập + Bearer token, trang chủ, trạng thái lỗi
+API, thống kê, tìm kiếm, responsive, điều hướng, xem video/bình luận, thông báo,
+upload tiến trình và luồng đăng nhập/đăng ký/đăng xuất.
 
 ## Deploy API lên Render
 

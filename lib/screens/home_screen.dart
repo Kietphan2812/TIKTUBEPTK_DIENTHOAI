@@ -5,11 +5,14 @@ import 'package:flutter/material.dart';
 import '../data/api_client.dart';
 import '../data/tiktube_api.dart';
 import '../models/app_notification.dart';
+import '../models/recommended_feed.dart';
 import '../models/video.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_tab_pill.dart';
 import '../widgets/category_bar.dart';
 import '../widgets/data_state.dart';
 import '../widgets/horizontal_drag_scroll.dart';
+import '../widgets/mobile_segmented_tabs.dart';
 import '../widgets/top_bar.dart';
 import '../widgets/trending_card.dart';
 import '../widgets/video_card.dart';
@@ -38,24 +41,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final TikTubeApi _api;
   List<Video>? _remoteVideos;
   List<Video> _trendingVideos = const <Video>[];
+  RecommendedFeed? _recommendedFeed;
   bool _loadingVideos = true;
   bool _refreshingVideos = false;
+  bool _loadingRecommended = true;
   bool _loadingTrending = true;
   bool _loadingNotifications = false;
   int _unreadNotifications = 0;
   String? _error;
+  String? _recommendedError;
   String? _trendingError;
+  int _recommendedLoadId = 0;
   int _trendingLoadId = 0;
   Timer? _refreshTimer;
+  int _pollTick = 0;
 
   String _query = '';
   String _category = 'Tất cả';
+  bool _forYou = true;
 
   bool get _searching => _query.trim().isNotEmpty;
 
-  bool get _usingSql => _remoteVideos != null;
+  List<Video> get _allVideos =>
+      _remoteVideos ?? _recommendedFeed?.videos ?? const <Video>[];
 
-  List<Video> get _allVideos => _remoteVideos ?? const <Video>[];
+  List<Video> get _visibleVideos {
+    if (_searching || !_forYou) return _videos;
+    return _recommendedFeed?.videos ?? const <Video>[];
+  }
 
   @override
   void initState() {
@@ -63,11 +76,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _api = widget.api ?? ApiClient();
     _loadVideos();
+    unawaited(_loadRecommended());
     unawaited(_loadTrending());
     unawaited(_loadUnreadNotifications());
     _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       if (!mounted) return;
+      _pollTick++;
       if (!_refreshingVideos) unawaited(_loadVideos(silent: true));
+      // Feed cá nhân hóa không cần tính lại mỗi 10 giây; 30 giây là đủ mới.
+      if (_pollTick % 3 == 0) {
+        unawaited(_loadRecommended(silent: true));
+      }
       unawaited(_loadTrending(silent: true));
       unawaited(_loadUnreadNotifications());
     });
@@ -114,6 +133,49 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     } finally {
       _refreshingVideos = false;
+    }
+  }
+
+  /// Tải feed cá nhân hóa. Nếu người dùng chưa có lịch sử, server trả tín hiệu
+  /// xu hướng + kênh đã đăng ký để không bao giờ dùng dữ liệu giả.
+  Future<void> _loadRecommended({bool silent = false}) async {
+    final int loadId = ++_recommendedLoadId;
+    final String? category = _category == 'Tất cả' ? null : _category;
+    if (!silent) {
+      setState(() {
+        _loadingRecommended = true;
+        _recommendedError = null;
+      });
+    }
+    try {
+      final RecommendedFeed feed = await _api.fetchForYouFeed(
+        limit: 24,
+        days: 30,
+        category: category,
+      );
+      if (!mounted || loadId != _recommendedLoadId) return;
+      setState(() {
+        _recommendedFeed = feed;
+        _loadingRecommended = false;
+        _recommendedError = null;
+      });
+    } catch (error) {
+      if (!mounted || loadId != _recommendedLoadId) return;
+      debugPrint('Không tải được feed Dành cho bạn từ API Neon: $error');
+      setState(() {
+        _loadingRecommended = false;
+        _recommendedError = error.toString();
+      });
+      if (!silent && _recommendedFeed != null) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('Không làm mới được gợi ý — giữ dữ liệu đã tải.'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+      }
     }
   }
 
@@ -175,6 +237,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_loadVideos(silent: true));
+      unawaited(_loadRecommended(silent: true));
       unawaited(_loadTrending(silent: true));
       unawaited(_loadUnreadNotifications());
     }
@@ -203,13 +266,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }).toList();
   }
 
-  void _openVideo(Video video) {
-    Navigator.of(context).push(
+  String? get _forYouSubtitle {
+    if (!_forYou || _searching) return null;
+    final RecommendedFeed? feed = _recommendedFeed;
+    if (feed == null) {
+      return _loadingRecommended ? 'Đang phân tích lịch sử xem...' : null;
+    }
+    if (feed.personalized) {
+      return 'Dựa trên lịch sử xem ${feed.windowDays} ngày · '
+          'Kênh đã đăng ký được ưu tiên';
+    }
+    return 'Chưa đủ lịch sử xem · Kênh đã đăng ký và tín hiệu xu hướng '
+        'được ưu tiên';
+  }
+
+  Future<void> _openVideo(Video video) async {
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) =>
             WatchScreen(video: video, api: _api, related: _allVideos),
       ),
     );
+    if (!mounted) return;
+    // Video vừa xem làm thay đổi lịch sử/sở thích nên tính lại gợi ý.
+    unawaited(_loadRecommended(silent: true));
+    unawaited(_loadVideos(silent: true));
+    unawaited(_loadTrending(silent: true));
   }
 
   void _notify(String action) {
@@ -231,7 +313,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final bool? result = await Navigator.of(context)
         .push<bool>(MaterialPageRoute<bool>(builder: (_) => screen));
     if (result == true && mounted) {
-      await Future.wait<void>(<Future<void>>[_loadVideos(), _loadTrending()]);
+      await Future.wait<void>(<Future<void>>[
+        _loadVideos(),
+        _loadRecommended(),
+        _loadTrending(),
+      ]);
     }
   }
 
@@ -291,7 +377,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {
       _query = '';
       _category = 'Tất cả';
+      _forYou = true;
+      _recommendedFeed = null;
     });
+    unawaited(_loadRecommended());
+    unawaited(_loadTrending());
+  }
+
+  void _selectForYou(bool value) {
+    if (_forYou == value) return;
+    setState(() => _forYou = value);
+    if (value && _recommendedFeed == null) {
+      unawaited(_loadRecommended());
+    }
   }
 
   @override
@@ -337,8 +435,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   const double gap = 16;
                   final double cardWidth =
                       (contentWidth - gap * (columns - 1)) / columns;
-                  final List<Video> videos = _videos;
+                  final List<Video> videos = _visibleVideos;
                   final List<Video> trending = _trendingVideos;
+                  final bool showingForYou = _forYou && !_searching;
+                  final bool activeLoading = showingForYou
+                      ? (_loadingRecommended && _recommendedFeed == null)
+                      : (_loadingVideos && _remoteVideos == null);
+                  final String? activeError = showingForYou
+                      ? (_recommendedFeed == null ? _recommendedError : null)
+                      : (_error != null && _remoteVideos == null
+                            ? _error
+                            : null);
+                  final bool activeOnline = showingForYou
+                      ? _recommendedFeed != null
+                      : _remoteVideos != null;
+                  final String activeLoadingMessage = showingForYou
+                      ? 'Đang xây dựng gợi ý từ lịch sử xem...'
+                      : 'Đang tải video từ Neon...';
+                  final VoidCallback retryActive = showingForYou
+                      ? () => unawaited(_loadRecommended())
+                      : () => unawaited(_loadVideos());
 
                   final Widget list = ListView(
                     controller: _scrollController,
@@ -420,7 +536,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                     video: video,
                                     rank: index + 1,
                                     compact: compact,
-                                    onTap: () => _openVideo(video),
+                                    onTap: () => unawaited(_openVideo(video)),
                                   );
                                 },
                               ),
@@ -446,10 +562,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       CategoryBar(
                         selected: _category,
                         onSelected: (String value) {
-                          setState(() => _category = value);
+                          setState(() {
+                            _category = value;
+                            _recommendedFeed = null;
+                          });
                           unawaited(_loadTrending());
+                          unawaited(_loadRecommended());
                         },
                       ),
+                      if (!_searching) ...<Widget>[
+                        SizedBox(height: compact ? 12 : 14),
+                        if (compact)
+                          MobileSegmentedTabs(
+                            labels: const <String>['Dành cho bạn', 'Mới nhất'],
+                            selectedIndex: _forYou ? 0 : 1,
+                            onChanged: (int index) => _selectForYou(index == 0),
+                          )
+                        else
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: <Widget>[
+                              AppTabPill(
+                                label: 'DÀNH CHO BẠN',
+                                selected: _forYou,
+                                onTap: () => _selectForYou(true),
+                              ),
+                              AppTabPill(
+                                label: 'MỚI NHẤT',
+                                selected: !_forYou,
+                                onTap: () => _selectForYou(false),
+                              ),
+                            ],
+                          ),
+                      ],
                       SizedBox(height: compact ? 14 : 18),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.end,
@@ -458,26 +604,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             child: _SectionTitle(
                               title: _searching
                                   ? 'Kết quả cho “${_query.trim()}”'
+                                  : showingForYou
+                                  ? 'Dành cho bạn'
                                   : 'Video mới',
                               subtitle: _searching
                                   ? '${videos.length} video phù hợp'
-                                  : null,
+                                  : _forYouSubtitle,
                               compact: compact,
                             ),
                           ),
                           const SizedBox(width: 10),
                           _SourceBadge(
-                            loading: _loadingVideos,
-                            online: _usingSql,
-                            onTap: _loadVideos,
+                            loading: showingForYou
+                                ? _loadingRecommended
+                                : _loadingVideos,
+                            online: activeOnline,
+                            onTap: retryActive,
                           ),
                         ],
                       ),
                       SizedBox(height: compact ? 10 : 14),
-                      if (_loadingVideos && _remoteVideos == null)
-                        const DataLoading(message: 'Đang tải video từ Neon...')
-                      else if (_error != null && _remoteVideos == null)
-                        DataError(message: _error!, onRetry: _loadVideos)
+                      if (activeLoading)
+                        DataLoading(message: activeLoadingMessage)
+                      else if (activeError != null)
+                        DataError(message: activeError, onRetry: retryActive)
                       else if (videos.isEmpty)
                         _EmptyState(onReset: _resetFilters)
                       else
@@ -491,7 +641,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 child: VideoCard(
                                   video: video,
                                   compact: compact,
-                                  onTap: () => _openVideo(video),
+                                  onTap: () => unawaited(_openVideo(video)),
                                 ),
                               ),
                           ],
@@ -511,6 +661,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     onRefresh: () async {
                       await Future.wait<void>(<Future<void>>[
                         _loadVideos(),
+                        _loadRecommended(),
                         _loadTrending(),
                       ]);
                     },

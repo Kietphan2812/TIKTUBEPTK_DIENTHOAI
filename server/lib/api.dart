@@ -46,6 +46,7 @@ Handler createApi(Db db, {CloudinaryService? cloudinary}) {
         'GET /api/tags?category=&limit=',
         'GET /api/videos?category=&q=&limit=',
         'GET /api/videos/trending?days=&limit=&category=',
+        'GET /api/feed/for-you?days=&limit=&category=',
         'GET /api/feed/subscriptions',
         'GET /api/videos/<id>',
         'POST /api/videos/upload',
@@ -56,6 +57,7 @@ Handler createApi(Db db, {CloudinaryService? cloudinary}) {
         'DELETE /api/videos/<id>/comments/<commentId>',
         'POST /api/videos/<id>/like',
         'POST /api/videos/<id>/view',
+        'POST /api/videos/<id>/watch-progress',
         'GET /api/channels',
         'GET /api/subscriptions',
         'POST /api/channels/<id>/subscribe',
@@ -243,6 +245,22 @@ Handler createApi(Db db, {CloudinaryService? cloudinary}) {
         'freshness',
       ],
     });
+  });
+
+  router.get('/api/feed/for-you', (Request request) async {
+    final params = request.url.queryParameters;
+    final int limit =
+        (int.tryParse(params['limit'] ?? '') ?? 24).clamp(1, 40).toInt();
+    final int days =
+        (int.tryParse(params['days'] ?? '') ?? 30).clamp(7, 90).toInt();
+    final userKey = await _optionalUserKey(db, request) ?? '';
+    final feed = await db.listForYouFeed(
+      userKey: userKey,
+      limit: limit,
+      days: days,
+      category: params['category'],
+    );
+    return _json(feed);
   });
 
   router.post('/api/videos/upload', (Request request) async {
@@ -464,6 +482,43 @@ Handler createApi(Db db, {CloudinaryService? cloudinary}) {
     if (result == null) throw ApiError(404, 'Không tìm thấy video.');
     return _json(result);
   });
+
+  router.post(
+    '/api/videos/<id>/watch-progress',
+    (Request request, String id) async {
+      _validateId(id);
+      final session = await _requireSession(db, request);
+      final body = await _readJson(request);
+      final rawWatched = body['watchedSeconds'];
+      final rawDuration = body['durationSeconds'];
+      final int watchedSeconds = rawWatched is num
+          ? rawWatched.toInt()
+          : int.tryParse('$rawWatched') ?? 0;
+      final int durationSeconds = rawDuration is num
+          ? rawDuration.toInt()
+          : int.tryParse('$rawDuration') ?? 0;
+      if (watchedSeconds <= 0 || durationSeconds < 0) {
+        throw ApiError(
+          400,
+          'watchedSeconds phải lớn hơn 0 và durationSeconds không được âm.',
+        );
+      }
+      final updated = await db.recordWatchProgress(
+        videoId: id,
+        userKey: session['userKey'] as String,
+        watchedSeconds: watchedSeconds,
+        durationSeconds: durationSeconds,
+      );
+      if (!updated) {
+        throw ApiError(404, 'Không tìm thấy lịch sử xem của video này.');
+      }
+      return _json(<String, Object?>{
+        'updated': true,
+        'watchedSeconds': watchedSeconds.clamp(0, 24 * 60 * 60),
+        'durationSeconds': durationSeconds.clamp(0, 24 * 60 * 60),
+      });
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // Kênh / đăng ký
