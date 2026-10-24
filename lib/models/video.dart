@@ -28,6 +28,8 @@ class Video {
     this.recentViews = 0,
     this.recommendationScore = 0,
     this.recommendationReason = '',
+    this.liked = false,
+    this.saved = false,
   });
 
   final String id;
@@ -70,6 +72,27 @@ class Video {
   /// Điểm và lý do gợi ý do feed "Dành cho bạn" trả về.
   final int recommendationScore;
   final String recommendationReason;
+
+  /// Trạng thái tương tác của người đang đăng nhập, do API trả về.
+  final bool liked;
+  final bool saved;
+
+  String get recommendationLabel {
+    switch (recommendationReason) {
+      case 'subscription':
+        return 'Kênh đã đăng ký';
+      case 'category_tag':
+        return 'Hợp danh mục & hashtag';
+      case 'category':
+        return 'Hợp danh mục';
+      case 'tag':
+        return 'Hợp hashtag';
+      case 'trending':
+        return 'Xu hướng';
+      default:
+        return trendScore > 0 ? 'Xu hướng' : '';
+    }
+  }
 
   bool get isApproved => status == 'da_duyet' || status == 'approved';
   bool get isRejected => status == 'tu_choi';
@@ -119,6 +142,8 @@ class Video {
       recentViews: (json['recentViews'] as num?)?.toInt() ?? 0,
       recommendationScore: (json['recommendationScore'] as num?)?.toInt() ?? 0,
       recommendationReason: json['recommendationReason']?.toString() ?? '',
+      liked: json['liked'] as bool? ?? false,
+      saved: json['saved'] as bool? ?? false,
     );
   }
 
@@ -132,6 +157,8 @@ class Video {
     int? recentViews,
     int? recommendationScore,
     String? recommendationReason,
+    bool? liked,
+    bool? saved,
   }) {
     return Video(
       id: id,
@@ -159,6 +186,8 @@ class Video {
       recentViews: recentViews ?? this.recentViews,
       recommendationScore: recommendationScore ?? this.recommendationScore,
       recommendationReason: recommendationReason ?? this.recommendationReason,
+      liked: liked ?? this.liked,
+      saved: saved ?? this.saved,
     );
   }
 

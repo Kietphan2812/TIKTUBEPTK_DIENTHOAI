@@ -167,6 +167,16 @@ class ApiClient implements TikTubeApi {
   }
 
   @override
+  Future<int> setSaved(String videoId, {required bool saved}) async {
+    final data = await _request(
+      'POST',
+      _uri('/api/videos/$videoId/save'),
+      body: <String, Object?>{'saved': saved},
+    );
+    return (data['saveCount'] as num?)?.toInt() ?? 0;
+  }
+
+  @override
   Future<void> registerView(String videoId) async {
     await _request(
       'POST',
@@ -306,6 +316,24 @@ class ApiClient implements TikTubeApi {
     final data = await _request(
       'GET',
       _uri('/api/feed/subscriptions', <String, String>{'limit': '$limit'}),
+    );
+    return _videoList(data);
+  }
+
+  @override
+  Future<List<Video>> fetchFriendsFeed({int limit = 30}) async {
+    final data = await _request(
+      'GET',
+      _uri('/api/feed/friends', <String, String>{'limit': '$limit'}),
+    );
+    return _videoList(data);
+  }
+
+  @override
+  Future<List<Video>> fetchSavedVideos({int limit = 50}) async {
+    final data = await _request(
+      'GET',
+      _uri('/api/saved', <String, String>{'limit': '$limit'}),
     );
     return _videoList(data);
   }

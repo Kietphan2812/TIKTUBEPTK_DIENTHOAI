@@ -84,6 +84,22 @@ on luot_thich (nguoi_dung_id, ngay_tao desc)
 create index if not exists app_binh_luan_user_time_idx
 on binh_luan (nguoi_dung_id, ngay_tao desc)
 ''');
+
+    // Video đã lưu (bookmark) là dữ liệu riêng của app, không sửa bảng web.
+    await _pool.execute('''
+create table if not exists app_saved_videos (
+  nguoi_dung_id integer not null
+    references nguoi_dung(nguoi_dung_id) on delete cascade,
+  video_id integer not null
+    references video(video_id) on delete cascade,
+  created_at timestamp with time zone not null default now(),
+  primary key (nguoi_dung_id, video_id)
+)
+''');
+    await _pool.execute('''
+create index if not exists app_saved_videos_user_time_idx
+on app_saved_videos (nguoi_dung_id, created_at desc)
+''');
   }
 
   // ---------------------------------------------------------------------------
@@ -972,6 +988,60 @@ where video_id = @videoId and nguoi_dung_id = @actorId
     });
   }
 
+  /// Lưu / bỏ lưu video cho riêng tài khoản đang đăng nhập.
+  Future<Map<String, Object?>?> setSaved({
+    required String videoId,
+    required bool saved,
+    required String userKey,
+  }) async {
+    final id = _intId(videoId);
+    if (id == null) return null;
+
+    return _pool.runTx((tx) async {
+      final actorId = await _userIdForKey(userKey, session: tx);
+      if (actorId == null) return null;
+
+      final video = await tx.execute(
+        Sql.named('select 1 from video where video_id = @videoId'),
+        parameters: {'videoId': id},
+      );
+      if (video.isEmpty) return null;
+
+      if (saved) {
+        await tx.execute(
+          Sql.named('''
+insert into app_saved_videos (nguoi_dung_id, video_id)
+values (@actorId, @videoId)
+on conflict (nguoi_dung_id, video_id) do nothing
+'''),
+          parameters: {'actorId': actorId, 'videoId': id},
+        );
+      } else {
+        await tx.execute(
+          Sql.named('''
+delete from app_saved_videos
+where nguoi_dung_id = @actorId and video_id = @videoId
+'''),
+          parameters: {'actorId': actorId, 'videoId': id},
+        );
+      }
+
+      final count = await tx.execute(
+        Sql.named('''
+select count(*)::int
+from app_saved_videos
+where video_id = @videoId
+'''),
+        parameters: {'videoId': id},
+      );
+
+      return <String, Object?>{
+        'saved': saved,
+        'saveCount': count.first[0],
+      };
+    });
+  }
+
   Future<Map<String, Object?>?> registerView({
     required String videoId,
     String userKey = '',
@@ -1087,6 +1157,84 @@ join dang_ky_kenh dk
  and dk.nguoi_dung_id = @currentUserId
 where v.trang_thai in ('da_duyet', 'approved')
 order by v.ngay_tao desc nulls last, v.video_id desc
+limit @limit
+'''),
+      parameters: {
+        'currentUserId': currentUserId,
+        'limit': limit.clamp(1, 100).toInt(),
+      },
+    );
+    return result.map(_videoFromRow).toList();
+  }
+
+  /// Video mới từ những kênh người dùng đã tương tác (thích, bình luận hoặc
+  /// xem) trong 90 ngày gần nhất. Đây là feed "Bạn bè" của màn hình xem nhanh,
+  /// lấy từ hành vi thật thay vì danh sách bạn bè giả lập.
+  Future<List<Map<String, Object?>>> listFriendsFeed({
+    required String userKey,
+    int limit = 30,
+  }) async {
+    final currentUserId = await _userIdForKey(userKey);
+    if (currentUserId == null) return const <Map<String, Object?>>[];
+
+    final result = await _pool.execute(
+      Sql.named('''
+with interacted_creators as (
+  select distinct v.nguoi_dung_id as creator_id
+  from (
+    select video_id
+    from luot_thich
+    where nguoi_dung_id = @currentUserId
+    union
+    select video_id
+    from binh_luan
+    where nguoi_dung_id = @currentUserId
+    union
+    select video_id
+    from lich_su_xem
+    where nguoi_dung_id = @currentUserId
+      and thoi_gian_xem >= now() - interval '90 days'
+  ) activity
+  join video v on v.video_id = activity.video_id
+  where v.nguoi_dung_id <> @currentUserId
+)
+select $_videoSelect
+from video v
+join nguoi_dung u on u.nguoi_dung_id = v.nguoi_dung_id
+left join danh_muc dm on dm.danh_muc_id = v.danh_muc_id
+left join the_tag tt on tt.tag_id = v.tag_id
+join interacted_creators f on f.creator_id = v.nguoi_dung_id
+where v.trang_thai in ('da_duyet', 'approved')
+order by v.ngay_tao desc nulls last, v.video_id desc
+limit @limit
+'''),
+      parameters: {
+        'currentUserId': currentUserId,
+        'limit': limit.clamp(1, 100).toInt(),
+      },
+    );
+    return result.map(_videoFromRow).toList();
+  }
+
+  /// Danh sách video người dùng đã lưu, mới nhất trước.
+  Future<List<Map<String, Object?>>> listSavedVideos({
+    required String userKey,
+    int limit = 50,
+  }) async {
+    final currentUserId = await _userIdForKey(userKey);
+    if (currentUserId == null) return const <Map<String, Object?>>[];
+
+    final result = await _pool.execute(
+      Sql.named('''
+select $_videoSelect
+from app_saved_videos sv
+join video v on v.video_id = sv.video_id
+join nguoi_dung u on u.nguoi_dung_id = v.nguoi_dung_id
+left join danh_muc dm on dm.danh_muc_id = v.danh_muc_id
+left join the_tag tt on tt.tag_id = v.tag_id
+where sv.nguoi_dung_id = @currentUserId
+  and v.trang_thai in ('da_duyet', 'approved')
+order by sv.created_at desc, v.video_id desc
 limit @limit
 '''),
       parameters: {
@@ -1345,7 +1493,7 @@ limit @limit
     );
     return result.map((row) {
       final video = _videoFromRow(row);
-      final watchedAt = row[17] as DateTime?;
+      final watchedAt = row[19] as DateTime?;
       video['watchedAt'] = watchedAt?.toUtc().toIso8601String() ?? '';
       return video;
     }).toList();
@@ -1776,15 +1924,15 @@ on conflict (nguoi_dung_id, ngay) do update set
   static Map<String, Object?> _trendingVideoFromRow(ResultRow row) {
     final video = _videoFromRow(row);
     // Hai cột cuối chỉ xuất hiện trong truy vấn xếp hạng xu hướng.
-    video['trendScore'] = _asInt(row[17]) ?? 0;
-    video['recentViews'] = _asInt(row[18]) ?? 0;
+    video['trendScore'] = _asInt(row[19]) ?? 0;
+    video['recentViews'] = _asInt(row[20]) ?? 0;
     return video;
   }
 
   static Map<String, Object?> _forYouVideoFromRow(ResultRow row) {
     final video = _videoFromRow(row);
-    video['recommendationScore'] = _asInt(row[17]) ?? 0;
-    video['recommendationReason'] = row[18]?.toString() ?? 'trending';
+    video['recommendationScore'] = _asInt(row[19]) ?? 0;
+    video['recommendationReason'] = row[20]?.toString() ?? 'trending';
     return video;
   }
 
@@ -1823,6 +1971,8 @@ on conflict (nguoi_dung_id, ngay) do update set
       'commentCount': _asInt(row[14]) ?? 0,
       'uploadedBy': row[2]?.toString() ?? '',
       'status': status,
+      'liked': row[17] as bool? ?? false,
+      'saved': row[18] as bool? ?? false,
     };
   }
 
@@ -1996,6 +2146,16 @@ exists(
 ),
 (select count(*)::int from binh_luan bl where bl.video_id = v.video_id),
 v.trang_thai,
-tt.ten_tag
+tt.ten_tag,
+exists(
+  select 1 from luot_thich lts
+  where lts.video_id = v.video_id
+    and lts.nguoi_dung_id = coalesce(@currentUserId::int, -1)
+) as liked,
+exists(
+  select 1 from app_saved_videos svs
+  where svs.video_id = v.video_id
+    and svs.nguoi_dung_id = coalesce(@currentUserId::int, -1)
+) as saved
 ''';
 }

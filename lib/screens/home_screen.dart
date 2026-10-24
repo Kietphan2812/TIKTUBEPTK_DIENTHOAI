@@ -19,9 +19,10 @@ import '../widgets/video_card.dart';
 import 'account_screen.dart';
 import 'history_screen.dart';
 import 'notifications_screen.dart';
+import 'quick_watch_screen.dart';
 import 'subscriptions_screen.dart';
 import 'trending_screen.dart';
-import 'upload_screen.dart';
+import 'upload_choice_sheet.dart';
 import 'watch_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -340,13 +341,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mounted) unawaited(_loadUnreadNotifications());
   }
 
+  Future<void> _openQuickWatch() async {
+    final List<Video> seed = _visibleVideos.isNotEmpty
+        ? _visibleVideos
+        : _allVideos;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => QuickWatchScreen(api: _api, initialVideos: seed),
+      ),
+    );
+    if (!mounted) return;
+    unawaited(_loadVideos(silent: true));
+    unawaited(_loadRecommended(silent: true));
+    unawaited(_loadTrending(silent: true));
+    unawaited(_loadUnreadNotifications());
+  }
+
+  Future<void> _openUpload() async {
+    final bool uploaded = await openUploadFlow(context, api: _api);
+    if (!mounted || !uploaded) return;
+    await Future.wait<void>(<Future<void>>[
+      _loadVideos(),
+      _loadRecommended(),
+      _loadTrending(),
+    ]);
+  }
+
   void _handleAction(String action) {
     switch (action) {
       case 'Thông báo':
         unawaited(_openNotifications());
         return;
+      case 'Xem video':
+        unawaited(_openQuickWatch());
+        return;
       case 'Đăng Video':
-        _push(UploadScreen(api: _api));
+        unawaited(_openUpload());
         return;
       case 'Lịch sử':
         _push(HistoryScreen(api: _api));
@@ -675,6 +705,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       bottomNavigationBar: isMobile
           ? _MobileBottomNav(onTap: _handleAction)
+          : null,
+      floatingActionButton: isMobile
+          ? FloatingActionButton.extended(
+              onPressed: () => unawaited(_openQuickWatch()),
+              backgroundColor: p.brandRed,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: const Text(
+                'Xem video',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+            )
           : null,
     );
   }

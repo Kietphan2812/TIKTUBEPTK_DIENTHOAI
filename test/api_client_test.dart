@@ -277,6 +277,70 @@ void main() {
     expect(videos.single.subscribed, isTrue);
   });
 
+  test('ApiClient.fetchFriendsFeed đọc feed bạn bè và trạng thái lưu', () async {
+    final client = MockClient((http.Request request) async {
+      expect(request.method, 'GET');
+      expect(request.url.path, '/api/feed/friends');
+      expect(request.url.queryParameters['limit'], '20');
+      expect(request.headers['authorization'], 'Bearer token-friends');
+      return http.Response(
+        jsonEncode(<String, Object?>{
+          'items': <Object?>[
+            <String, Object?>{
+              'id': 'friend-1',
+              'title': 'Video của người đã tương tác',
+              'channel': 'Bạn PTK',
+              'handle': '@banptk',
+              'views': 12,
+              'date': '24/10/2026',
+              'durationSeconds': 60,
+              'category': 'Gaming',
+              'colors': <String>['#111111', '#222222'],
+              'liked': true,
+              'saved': true,
+            },
+          ],
+          'count': 1,
+        }),
+        200,
+        headers: <String, String>{
+          'content-type': 'application/json; charset=utf-8',
+        },
+      );
+    });
+
+    final api = ApiClient(client: client, baseUrl: 'http://localhost:8787');
+    api.setAuthToken('token-friends');
+    final videos = await api.fetchFriendsFeed(limit: 20);
+
+    expect(videos, hasLength(1));
+    expect(videos.single.liked, isTrue);
+    expect(videos.single.saved, isTrue);
+  });
+
+  test('ApiClient.setSaved gửi trạng thái lưu và đọc tổng số lượt lưu', () async {
+    final client = MockClient((http.Request request) async {
+      expect(request.method, 'POST');
+      expect(request.url.path, '/api/videos/7/save');
+      expect(request.headers['authorization'], 'Bearer token-save');
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      expect(body['saved'], isTrue);
+      return http.Response(
+        jsonEncode(<String, Object?>{'saved': true, 'saveCount': 3}),
+        200,
+        headers: <String, String>{
+          'content-type': 'application/json; charset=utf-8',
+        },
+      );
+    });
+
+    final api = ApiClient(client: client, baseUrl: 'http://localhost:8787');
+    api.setAuthToken('token-save');
+    final count = await api.setSaved('7', saved: true);
+
+    expect(count, 3);
+  });
+
   test('ApiClient ném ApiException kèm thông báo lỗi của server', () async {
     final client = MockClient((http.Request request) async {
       return http.Response(

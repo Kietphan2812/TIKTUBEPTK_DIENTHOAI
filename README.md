@@ -4,7 +4,7 @@ Bản dựng lại giao diện **TIKTUBE** (trang xem & chia sẻ video của PT
 kèm REST API viết bằng Dart, dùng chung database Neon với web app và lưu video trên
 Cloudinary.
 
-Phiên bản Android đang phát hành: **1.0.8+9** (APK cài trực tiếp, trỏ API
+Phiên bản Android đang phát hành: **1.0.9+10** (APK cài trực tiếp, trỏ API
 `https://tiktube-api.onrender.com`).
 
 ## Kiến trúc
@@ -31,9 +31,10 @@ Flutter ── gửi file ──► Dart server ── ký upload ──► Clou
 - App **không tạo schema video/người dùng song song**. Video đăng từ web và từ app
   cùng nằm trong bảng `video`; bình luận, lượt thích, đăng ký kênh, lịch sử xem
   cũng dùng đúng các bảng web đang dùng.
-- Phần riêng của app chỉ gồm bảng `app_sessions` (phiên đăng nhập) và cột
-  nullable `nguoi_dung.ten_hien_thi` (tên hiển thị trong app). Cột này không làm
-  thay đổi `ten_dang_nhap` mà web dùng để đăng nhập.
+- Phần riêng của app gồm bảng `app_sessions` (phiên đăng nhập), bảng
+  `app_saved_videos` (video đã lưu) và cột nullable `nguoi_dung.ten_hien_thi`
+  (tên hiển thị trong app). Cột này không làm thay đổi `ten_dang_nhap` mà web
+  dùng để đăng nhập.
 - **Đăng nhập thật:** tài khoản web hiện lưu SHA-256 dạng 64 ký tự hex. App xác
   thực đúng định dạng này và tài khoản mới do app tạo cũng lưu SHA-256 hex để
   đăng nhập được trên cả web lẫn app. Phiên là token ngẫu nhiên 256-bit; server
@@ -44,6 +45,17 @@ Flutter ── gửi file ──► Dart server ── ký upload ──► Clou
 - Trang chủ mặc định mở **Dành cho bạn**; chuyển sang **Mới nhất** để xem đúng thứ
   tự thời gian. Feed mới được tải lại mỗi **10 giây**; gợi ý cá nhân hóa được tính
   lại mỗi **30 giây**, sau khi xem video hoặc khi quay lại tab.
+- Màn hình **Xem video** là feed dọc toàn màn hình, tự phát video đang hiển thị và
+  tạm dừng video khi vuốt sang trang khác. Ba tab **Đã follow / Bạn bè / Dành cho
+  bạn** lấy dữ liệu thật từ Neon; thích, lưu và theo dõi kênh được ghi ngay vào
+  database. Video đã xem được lưu thời lượng để cải thiện gợi ý.
+- **Bạn bè** gồm video mới từ những kênh người dùng đã thích, bình luận hoặc xem
+  trong **90 ngày** gần nhất. Nếu chưa đủ tín hiệu, app lần lượt dùng feed kênh đã
+  đăng ký rồi đến video xu hướng, không dùng danh sách bạn bè giả.
+- Trong màn hình xem nhanh, chuông thông báo tự làm mới mỗi **8 giây**; thông báo
+  mới hiện banner ngay trên video. **Đăng video** mở lựa chọn **Đăng video nhanh**
+  (tự điền tiêu đề từ tên tệp, hashtag gợi ý theo danh mục) hoặc **Đăng video
+  TIKTUBE** (biểu mẫu đầy đủ với xem trước).
 
 ## Dữ liệu thật đang dùng
 
@@ -54,6 +66,10 @@ Flutter ── gửi file ──► Dart server ── ký upload ──► Clou
 | Dành cho bạn | `lich_su_xem` (kèm thời lượng xem), `luot_thich`, `binh_luan`, `video`, `danh_muc`, `the_tag`, `dang_ky_kenh` — xếp hạng bằng SQL |
 | Video xu hướng | `video`, `luot_thich`, `binh_luan`, `lich_su_xem`, `dang_ky_kenh` — xếp hạng bằng SQL |
 | Video từ kênh đã đăng ký | `video` + `dang_ky_kenh` — chỉ video đã duyệt của kênh đang theo dõi |
+| Xem nhanh — Đã follow | `video` + `dang_ky_kenh` — video mới từ kênh đã đăng ký |
+| Xem nhanh — Bạn bè | `luot_thich`, `binh_luan`, `lich_su_xem` (90 ngày) → kênh đã tương tác + `video` |
+| Xem nhanh — Dành cho bạn | `GET /api/feed/for-you` + tín hiệu xu hướng `GET /api/videos/trending` khi cần |
+| Lưu video | `app_saved_videos` — lưu/bỏ lưu thật theo tài khoản, khôi phục trạng thái khi tải lại |
 | Xem video | `video`, `binh_luan`, `luot_thich`, `lich_su_xem`, `dang_ky_kenh`; lưu thêm thời lượng đã xem/phần trăm hoàn thành |
 | Đăng video | `POST /api/videos/upload` — file đi qua server, lưu Cloudinary, ghi `video` + `lich_su_dang_video` + `kiem_duyet_video` |
 | Gợi ý thẻ tag | `the_tag` + `danh_muc` — `GET /api/tags?category=...`, đổi danh mục sẽ tải lại đúng tag của danh mục đó |
@@ -262,11 +278,14 @@ người dùng thật trong Neon và tự động đăng nhập.
 | POST | `/api/videos/<id>/comments` | Gửi bình luận |
 | DELETE | `/api/videos/<id>/comments/<commentId>` | Xoá bình luận |
 | POST | `/api/videos/<id>/like` | Like/unlike |
+| POST | `/api/videos/<id>/save` | `{saved}` — lưu/bỏ lưu video |
 | POST | `/api/videos/<id>/view` | Ghi lượt xem + lịch sử |
 | POST | `/api/videos/<id>/watch-progress` | `{watchedSeconds, durationSeconds}` — cập nhật thời lượng đã xem, không tăng lượt xem |
 | GET | `/api/channels` | Kênh |
 | GET | `/api/subscriptions` | Kênh đã đăng ký |
 | GET | `/api/feed/subscriptions?limit=30` | Video mới nhất từ các kênh đã đăng ký (cần Bearer token) |
+| GET | `/api/feed/friends?limit=30` | Video mới từ kênh đã thích/bình luận/xem trong 90 ngày (cần Bearer token) |
+| GET | `/api/saved?limit=50` | Video người dùng đã lưu, mới nhất trước (cần Bearer token) |
 | POST/DELETE | `/api/channels/<id>/subscribe` | Đăng ký/huỷ đăng ký |
 | GET | `/api/history` | Lịch sử xem |
 | DELETE | `/api/history` | Xoá toàn bộ lịch sử |
@@ -283,9 +302,9 @@ Các endpoint đọc công khai như `/api/videos`, `/api/categories`, `/api/tag
 `/api/videos/trending`, `/api/feed/for-you`, `/api/videos/<id>` vẫn xem được khi
 chưa đăng nhập. Riêng `/api/feed/for-you`, nếu gửi kèm Bearer token thì feed được
 cá nhân hóa; không có token sẽ trả tín hiệu xu hướng. Endpoint
-`/api/feed/subscriptions`, các endpoint ghi (upload, bình luận, like, view,
-watch-progress, đăng ký kênh) và dữ liệu riêng (lịch sử, uploads, stats, thông
-báo, `/api/me`) yêu cầu header:
+`/api/feed/subscriptions`, `/api/feed/friends`, `/api/saved`, các endpoint ghi
+(upload, bình luận, like, save, view, watch-progress, đăng ký kênh) và dữ liệu
+riêng (lịch sử, uploads, stats, thông báo, `/api/me`) yêu cầu header:
 
 ```http
 Authorization: Bearer <token>
@@ -300,11 +319,11 @@ lib/
   auth/            AuthController, AuthScope, lưu phiên localStorage
   data/            ApiClient, TikTubeApi, model parsing
   models/          Video, RecommendedFeed, Channel, Comment, Profile, AuthSession, ...
-  screens/         auth, home, trending, watch, upload, notifications, subscriptions, history, stats, account
-  widgets/         data_state (loading/error), video_surface (player), ...
+  screens/         auth, home, quick_watch, quick_upload, upload_choice, trending, watch, upload, notifications, subscriptions, history, stats, account
+  widgets/         data_state (loading/error), quick_watch_page, quick_comments_sheet, video_surface (player), ...
 server/
   bin/server.dart          HTTP server
-  bin/setup_target_db.dart chuẩn bị app_sessions + tài khoản demo (idempotent)
+  bin/setup_target_db.dart chuẩn bị app_sessions + app_saved_videos + tài khoản demo (idempotent)
   bin/init_db.dart         đã vô hiệu hoá — không dùng cho DB web
   lib/api.dart             routes + nhận bytes video qua query params
   lib/db.dart              map truy vấn sang schema web tiếng Việt
@@ -315,8 +334,8 @@ db/
   schema.sql       schema cũ của app (legacy, không dùng cho TIKTUBETPK)
   seed.sql         seed cũ của app (legacy, không dùng cho TIKTUBETPK)
 test/
-  api_client_test.dart  parse REST, lỗi, đăng nhập + Bearer token
-  widget_test.dart      điều hướng, lỗi API, thống kê, bình luận, auth
+  api_client_test.dart  parse REST, lỗi, đăng nhập + Bearer token, feed bạn bè/lưu video
+  widget_test.dart      điều hướng, lỗi API, thống kê, bình luận, xem nhanh, đăng nhanh, auth
 ```
 
 ## Kiểm tra
@@ -324,14 +343,15 @@ test/
 ```bash
 flutter analyze
 flutter test
-flutter build web --release
+flutter build web --release --dart-define=API_BASE_URL=https://tiktube-api.onrender.com
 cd server && dart analyze
 ```
 
-Hiện có 29 test: parse API, xu hướng + feed đăng ký + feed Dành cho bạn, thời lượng
-xem, thẻ tag theo danh mục, đăng nhập + Bearer token, trang chủ, trạng thái lỗi
-API, thống kê, tìm kiếm, responsive, điều hướng, xem video/bình luận, thông báo,
-upload tiến trình, khôi phục phiên sau khi mở lại app và luồng đăng nhập/đăng
+Bộ test hiện bao phủ: parse API, xu hướng + feed đăng ký + feed Dành cho bạn +
+feed Bạn bè + lưu video, thời lượng xem, thẻ tag theo danh mục, đăng nhập + Bearer
+token, trang chủ, trạng thái lỗi API, thống kê, tìm kiếm, responsive, điều hướng,
+xem video/bình luận, xem nhanh (thích/lưu), lựa chọn đăng video, đăng nhanh, thông
+báo, upload tiến trình, khôi phục phiên sau khi mở lại app và luồng đăng nhập/đăng
 ký/đăng xuất.
 
 ## Deploy API lên Render

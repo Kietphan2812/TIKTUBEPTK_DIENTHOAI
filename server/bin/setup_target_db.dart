@@ -54,6 +54,20 @@ on luot_thich (nguoi_dung_id, ngay_tao desc)
 create index if not exists app_binh_luan_user_time_idx
 on binh_luan (nguoi_dung_id, ngay_tao desc)
 ''');
+    await connection.execute('''
+create table if not exists app_saved_videos (
+  nguoi_dung_id integer not null
+    references nguoi_dung(nguoi_dung_id) on delete cascade,
+  video_id integer not null
+    references video(video_id) on delete cascade,
+  created_at timestamp with time zone not null default now(),
+  primary key (nguoi_dung_id, video_id)
+)
+''');
+    await connection.execute('''
+create index if not exists app_saved_videos_user_time_idx
+on app_saved_videos (nguoi_dung_id, created_at desc)
+''');
 
     final demoHash = sha256.convert(utf8.encode('TikTube@123')).toString();
     final inserted = await connection.execute(

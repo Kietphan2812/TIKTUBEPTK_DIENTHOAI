@@ -48,6 +48,9 @@ abstract interface class TikTubeApi {
   /// Trả về tổng số lượt thích mới của video.
   Future<int> setLike(String videoId, {required bool liked});
 
+  /// Lưu hoặc bỏ lưu video. Trả về tổng số lượt lưu.
+  Future<int> setSaved(String videoId, {required bool saved});
+
   Future<void> registerView(String videoId);
 
   /// Ghi thời lượng đã xem để cải thiện gợi ý và mức độ hoàn thành video.
@@ -95,6 +98,12 @@ abstract interface class TikTubeApi {
 
   /// Video mới nhất từ các kênh người dùng đang đăng ký.
   Future<List<Video>> fetchSubscriptionFeed({int limit = 30});
+
+  /// Video mới từ những kênh người dùng đã thích/bình luận/xem.
+  Future<List<Video>> fetchFriendsFeed({int limit = 30});
+
+  /// Những video người dùng đã lưu.
+  Future<List<Video>> fetchSavedVideos({int limit = 50});
 
   /// Trả về số người đăng ký mới của kênh.
   Future<int> setSubscription(String channelId, {required bool subscribed});

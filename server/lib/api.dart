@@ -47,7 +47,9 @@ Handler createApi(Db db, {CloudinaryService? cloudinary}) {
         'GET /api/videos?category=&q=&limit=',
         'GET /api/videos/trending?days=&limit=&category=',
         'GET /api/feed/for-you?days=&limit=&category=',
-        'GET /api/feed/subscriptions',
+        'GET /api/feed/subscriptions?limit=',
+        'GET /api/feed/friends?limit=',
+        'GET /api/saved?limit=',
         'GET /api/videos/<id>',
         'POST /api/videos/upload',
         'PATCH /api/videos/<id>',
@@ -56,6 +58,7 @@ Handler createApi(Db db, {CloudinaryService? cloudinary}) {
         'POST /api/videos/<id>/comments',
         'DELETE /api/videos/<id>/comments/<commentId>',
         'POST /api/videos/<id>/like',
+        'POST /api/videos/<id>/save',
         'POST /api/videos/<id>/view',
         'POST /api/videos/<id>/watch-progress',
         'GET /api/channels',
@@ -472,6 +475,23 @@ Handler createApi(Db db, {CloudinaryService? cloudinary}) {
     return _json(result);
   });
 
+  router.post('/api/videos/<id>/save', (Request request, String id) async {
+    _validateId(id);
+    final session = await _requireSession(db, request);
+    final body = await _readJson(request);
+    final saved = body['saved'];
+    if (saved is! bool) {
+      throw ApiError(400, 'Trường "saved" phải là true hoặc false.');
+    }
+    final result = await db.setSaved(
+      videoId: id,
+      saved: saved,
+      userKey: session['userKey'] as String,
+    );
+    if (result == null) throw ApiError(404, 'Không tìm thấy video.');
+    return _json(result);
+  });
+
   router.post('/api/videos/<id>/view', (Request request, String id) async {
     _validateId(id);
     final session = await _requireSession(db, request);
@@ -545,6 +565,40 @@ Handler createApi(Db db, {CloudinaryService? cloudinary}) {
     final int limit =
         (int.tryParse(params['limit'] ?? '') ?? 30).clamp(1, 100).toInt();
     final videos = await db.listSubscriptionFeed(
+      userKey: session['userKey'] as String,
+      limit: limit,
+    );
+    return _json(<String, Object?>{'items': videos, 'count': videos.length});
+  });
+
+  router.get('/api/feed/friends', (Request request) async {
+    final session = await _requireSession(db, request);
+    final params = request.url.queryParameters;
+    final int limit =
+        (int.tryParse(params['limit'] ?? '') ?? 30).clamp(1, 100).toInt();
+    final videos = await db.listFriendsFeed(
+      userKey: session['userKey'] as String,
+      limit: limit,
+    );
+    return _json(<String, Object?>{
+      'items': videos,
+      'count': videos.length,
+      'algorithm': 'tiktube_friends_v1',
+      'signals': const <String>[
+        'likedCreators',
+        'commentedCreators',
+        'watchedCreators',
+        'freshness',
+      ],
+    });
+  });
+
+  router.get('/api/saved', (Request request) async {
+    final session = await _requireSession(db, request);
+    final params = request.url.queryParameters;
+    final int limit =
+        (int.tryParse(params['limit'] ?? '') ?? 50).clamp(1, 100).toInt();
+    final videos = await db.listSavedVideos(
       userKey: session['userKey'] as String,
       limit: limit,
     );

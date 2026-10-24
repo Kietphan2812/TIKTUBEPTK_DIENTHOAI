@@ -77,6 +77,10 @@ class _OfflineApi implements TikTubeApi {
       liked ? 2 : 1;
 
   @override
+  Future<int> setSaved(String videoId, {required bool saved}) async =>
+      saved ? 1 : 0;
+
+  @override
   Future<void> registerView(String videoId) async {}
 
   @override
@@ -119,6 +123,14 @@ class _OfflineApi implements TikTubeApi {
   @override
   Future<List<Video>> fetchSubscriptionFeed({int limit = 30}) async =>
       kLatestVideos.take(4).toList();
+
+  @override
+  Future<List<Video>> fetchFriendsFeed({int limit = 30}) async =>
+      kLatestVideos.take(3).toList();
+
+  @override
+  Future<List<Video>> fetchSavedVideos({int limit = 50}) async =>
+      const <Video>[];
 
   @override
   Future<int> setSubscription(
@@ -501,6 +513,10 @@ void main() {
 
     await tester.tap(find.text('Đăng'));
     await tester.pumpAndSettle();
+    expect(find.text('Đăng video nhanh'), findsOneWidget);
+    expect(find.text('Đăng video TIKTUBE'), findsOneWidget);
+    await tester.tap(find.text('Đăng video TIKTUBE'));
+    await tester.pumpAndSettle();
     expect(find.text('Tải video'), findsOneWidget);
     expect(find.text('Chọn video để tải lên'), findsOneWidget);
     expect(find.text('Xem trước video'), findsOneWidget);
@@ -728,6 +744,7 @@ void main() {
     expect(cardWidth, closeTo(259.2, 1));
 
     expect(find.text('Trang chủ'), findsOneWidget);
+    expect(find.text('Xem video'), findsOneWidget);
     expect(find.text('Đăng Video'), findsOneWidget);
     expect(find.text('Lịch sử'), findsOneWidget);
     expect(find.text('Đăng ký'), findsOneWidget);
@@ -745,6 +762,10 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Đăng Video'));
+    await tester.pumpAndSettle();
+    expect(find.text('Đăng video nhanh'), findsOneWidget);
+    expect(find.text('Đăng video TIKTUBE'), findsOneWidget);
+    await tester.tap(find.text('Đăng video TIKTUBE'));
     await tester.pumpAndSettle();
     expect(find.text('Tải video'), findsOneWidget);
     expect(find.text('Chọn video để tải lên'), findsOneWidget);
@@ -812,6 +833,92 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('hay quá'), findsOneWidget);
+  });
+
+  testWidgets('Xem video mở feed dọc và lưu/thích được video', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      PtkTubeApp(api: _OfflineApi(), authRequired: false),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Xem video'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Đã follow'), findsOneWidget);
+    expect(find.text('Bạn bè'), findsOneWidget);
+    expect(find.text('Dành cho bạn'), findsWidgets);
+    expect(find.text('Lưu'), findsWidgets);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byTooltip('Lưu video').first);
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Bỏ lưu'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Thích').first);
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Bỏ thích'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Nút đăng video mở lựa chọn đăng nhanh và TIKTUBE', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      PtkTubeApp(api: _OfflineApi(), authRequired: false),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Đăng'));
+    await tester.pumpAndSettle();
+    expect(find.text('Đăng video nhanh'), findsOneWidget);
+    expect(find.text('Đăng video TIKTUBE'), findsOneWidget);
+
+    await tester.tap(find.text('Đăng video nhanh'));
+    await tester.pumpAndSettle();
+    expect(find.text('Đăng nhanh, dữ liệu thật'), findsOneWidget);
+    expect(find.text('Chạm để chọn video từ thiết bị'), findsOneWidget);
+    expect(find.text('Hashtag gợi ý từ Neon'), findsOneWidget);
+    expect(find.text('#remix'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Xem video hiển thị thông báo chưa đọc từ API', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      PtkTubeApp(api: _NotificationApi(), authRequired: false),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Xem video'));
+    await tester.pumpAndSettle();
+
+    final Finder bell = find.byKey(
+      const ValueKey<String>('quick-watch-notifications'),
+    );
+    expect(bell, findsOneWidget);
+    expect(
+      find.descendant(of: bell, matching: find.text('1')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('Đăng nhập rồi đăng xuất và không hiện tài khoản demo', (

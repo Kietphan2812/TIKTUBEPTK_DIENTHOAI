@@ -89,7 +89,17 @@ class TopBar extends StatelessWidget {
                       label: 'Trang chủ',
                       onTap: () => onAction('Trang chủ'),
                     ),
+                  if (!isMobile && !showSecondaryNav)
+                    _IconButton(
+                      icon: Icons.play_circle_outline_rounded,
+                      tooltip: 'Xem video',
+                      onTap: () => onAction('Xem video'),
+                    ),
                   if (showSecondaryNav) ...<Widget>[
+                    _NavItem(
+                      label: 'Xem video',
+                      onTap: () => onAction('Xem video'),
+                    ),
                     _NavItem(
                       label: 'Đăng Video',
                       onTap: () => onAction('Đăng Video'),
