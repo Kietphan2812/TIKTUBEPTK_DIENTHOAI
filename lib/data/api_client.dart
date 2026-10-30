@@ -25,7 +25,7 @@ class ApiClient implements TikTubeApi {
         baseUrl ??
             const String.fromEnvironment(
               'API_BASE_URL',
-              defaultValue: 'http://127.0.0.1:8787',
+              defaultValue: 'https://tiktube-api.onrender.com',
             ),
       );
 
