@@ -118,6 +118,16 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
   - Khi người dùng đăng xuất hoặc chuyển sang tài khoản khác, hệ thống tự động xóa bộ nhớ phiên cũ, nạp bộ nhớ đệm riêng biệt theo khóa `tiktube_friends_v3_<userKey>`, `tiktube_messages_v3_<userKey>` và tải danh bạ bạn bè thật của tài khoản mới từ Neon.
   - Tích hợp lắng nghe tự động tại `AuthController` (`restore`, `_apply`, `logout`, `updateProfileCache`), `HomeScreen` và `ChatScreen` (`didChangeDependencies`).
 
+### 3.9. Đồng bộ Số điện thoại cá nhân từ trang Tài khoản sang Trang Chat & Neon SQL
+- **Lưu trữ & Truyền dữ liệu hai chiều:**
+  - `AccountScreen._save()` đọc trường `_phone.text.trim()`, kiểm tra định dạng hợp lệ (9-11 chữ số), và truyền vào `_api.updateProfile(phone: phone)`.
+  - `TikTubeApi` và `ApiClient` nhận tham số `String? phone`, đính kèm vào payload `PATCH /api/me` và trả về `profile.copyWith(phone: phone)`.
+  - `AccountScreen` gọi đồng thời `updateProfileCache(profile)` và `ChatService.instance.updateCurrentUserPhone(phone)`.
+- **Đồng bộ tức thì lên Neon SQL & Giao diện Chat:**
+  - `ChatService` ngay lập tức gán SĐT mới vào `_currentUser.phone`, lưu xuống SharedPreferences `_prefCurrentUserKey()`, và gọi API `POST /api/users/profile` của `nhantinptk.onrender.com` để cập nhật bảng `users` trên Neon PostgreSQL.
+  - Thanh trạng thái `_buildNeonStatusBanner` trên `ChatScreen` ưu tiên hiển thị SĐT thực đã lưu, loại bỏ triệt để chuỗi hash ngẫu nhiên cũ (`0320001688`).
+  - Khi khởi động lại app (`AuthController.restore()`), hệ thống bảo toàn trường `phone` của phiên hiện tại thay vì bị ghi đè bởi giá trị rỗng từ máy chủ video.
+
 ---
 
 ### 3.5. Quy chuẩn về cài đặt iOS (.ipa)

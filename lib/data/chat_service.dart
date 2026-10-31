@@ -108,6 +108,15 @@ class ChatService extends ChangeNotifier {
       notifyListeners();
     }
 
+    final cleanPhone = (profile.phone ?? '').trim().replaceAll(' ', '');
+    if (cleanPhone.isNotEmpty) {
+      if (_currentUser != null && _currentUser!.phone != cleanPhone) {
+        _currentUser = _currentUser!.copyWith(phone: cleanPhone);
+        await _saveCurrentUserToStorage();
+        notifyListeners();
+      }
+    }
+
     // 3. Đồng bộ danh sách bạn bè thật từ Neon PostgreSQL của tài khoản này
     await fetchNeonUsersAndSync(profile: profile);
   }
@@ -148,6 +157,10 @@ class ChatService extends ChangeNotifier {
       if (userJson != null && userJson.isNotEmpty) {
         try {
           _currentUser = Friend.fromJson(jsonDecode(userJson) as Map<String, dynamic>);
+          final cleanPhone = (_currentProfile?.phone ?? '').trim().replaceAll(' ', '');
+          if (cleanPhone.isNotEmpty && _currentUser!.phone != cleanPhone) {
+            _currentUser = _currentUser!.copyWith(phone: cleanPhone);
+          }
         } catch (_) {}
       }
 
@@ -335,6 +348,21 @@ class ChatService extends ChangeNotifier {
         }
 
         if (targetUser != null) {
+          final cleanPhone = (effectiveProfile?.phone ?? '').trim().replaceAll(' ', '');
+          if (cleanPhone.isNotEmpty && targetUser.phone != cleanPhone) {
+            targetUser = targetUser.copyWith(phone: cleanPhone);
+            unawaited(http.post(
+              Uri.parse('$_baseUrl/api/users/profile'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'id': targetUser.id,
+                'name': targetUser.name,
+                'phone': cleanPhone,
+                'avatar': targetUser.avatar,
+              }),
+            ).then((_) {}, onError: (_) {}));
+          }
+
           _currentUser = targetUser;
           unawaited(_saveCurrentUserToStorage());
 
@@ -686,6 +714,39 @@ class ChatService extends ChangeNotifier {
       }
     } catch (_) {}
     return false;
+  }
+
+  /// Cập nhật số điện thoại người dùng hiện tại và đồng bộ ngay lên Neon SQL
+  Future<void> updateCurrentUserPhone(String newPhone) async {
+    final clean = newPhone.trim().replaceAll(' ', '');
+    if (clean.isEmpty) return;
+
+    if (_currentProfile != null) {
+      _currentProfile = _currentProfile!.copyWith(phone: clean);
+    }
+
+    if (_currentUser != null) {
+      _currentUser = _currentUser!.copyWith(phone: clean);
+      await _saveCurrentUserToStorage();
+      notifyListeners();
+
+      try {
+        await http.post(
+          Uri.parse('$_baseUrl/api/users/profile'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'id': _currentUser!.id,
+            'name': _currentUser!.name,
+            'phone': clean,
+            'avatar': _currentUser!.avatar,
+          }),
+        ).timeout(const Duration(seconds: 8));
+      } catch (_) {}
+
+      _emitSocketLogin();
+    } else {
+      await fetchNeonUsersAndSync();
+    }
   }
 
   Future<void> _saveCurrentUserToStorage() async {

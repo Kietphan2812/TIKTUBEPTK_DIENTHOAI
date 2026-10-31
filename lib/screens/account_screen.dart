@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
+import '../data/chat_service.dart';
 import 'package:flutter/material.dart';
 
 import '../auth/auth_scope.dart';
@@ -65,10 +67,16 @@ class _AccountScreenState extends State<AccountScreen> {
     try {
       final Profile profile = await _api.fetchProfile();
       if (!mounted) return;
+      final cachedProfile = AuthScope.maybeOf(context)?.profile;
+      final effectivePhone = (profile.phone != null && profile.phone!.isNotEmpty)
+          ? profile.phone
+          : (cachedProfile?.phone ?? _phone.text.trim());
       setState(() {
         _username.text = profile.name;
         _email.text = profile.email;
-        _phone.text = profile.phone ?? '';
+        if (effectivePhone != null && effectivePhone.isNotEmpty) {
+          _phone.text = effectivePhone;
+        }
         _age.text = profile.age?.toString() ?? '';
         _displayName = profile.name.isEmpty ? profile.userKey : profile.name;
         _userKey = profile.userKey;
@@ -108,6 +116,7 @@ class _AccountScreenState extends State<AccountScreen> {
     if (_saving) return;
     final String name = _username.text.trim();
     final String email = _email.text.trim();
+    final String phone = _phone.text.trim();
     final int? age = int.tryParse(_age.text.trim());
     final String? avatarToSave = newAvatarUrl ?? _avatarUrl;
 
@@ -118,6 +127,13 @@ class _AccountScreenState extends State<AccountScreen> {
     if (email.isEmpty || !email.contains('@')) {
       _notify('Email không hợp lệ.');
       return;
+    }
+    if (phone.isNotEmpty) {
+      final digits = phone.replaceAll(RegExp(r'[\s\-\.]'), '');
+      if (digits.length < 9 || digits.length > 11) {
+        _notify('Số điện thoại không hợp lệ (cần 9–11 chữ số).');
+        return;
+      }
     }
     if (age != null && (age < 1 || age > 120)) {
       _notify('Tuổi phải nằm trong khoảng 1–120.');
@@ -130,6 +146,7 @@ class _AccountScreenState extends State<AccountScreen> {
       final Profile profile = await _api.updateProfile(
         name: name,
         email: email,
+        phone: phone,
         age: age,
         avatarUrl: avatarToSave,
       );
@@ -138,9 +155,11 @@ class _AccountScreenState extends State<AccountScreen> {
         _displayName = profile.name.isEmpty ? profile.userKey : profile.name;
         _userKey = profile.userKey;
         _avatarUrl = profile.avatarUrl;
+        _phone.text = profile.phone ?? phone;
         _saving = false;
       });
       AuthScope.maybeOf(context)?.updateProfileCache(profile);
+      unawaited(ChatService.instance.updateCurrentUserPhone(profile.phone ?? phone));
       _notify(message);
     } catch (error) {
       if (!mounted) return;

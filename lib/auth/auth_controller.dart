@@ -63,7 +63,7 @@ class AuthController extends ChangeNotifier {
 
       try {
         final Profile fresh = await _api.fetchProfile();
-        _profile = fresh;
+        _profile = fresh.copyWith(phone: fresh.phone ?? _profile?.phone);
         await _persist();
         notifyListeners();
         unawaited(ChatService.instance.syncWithProfile(_profile));

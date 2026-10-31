@@ -147,6 +147,7 @@ abstract interface class TikTubeApi {
   Future<Profile> updateProfile({
     required String name,
     required String email,
+    String? phone,
     int? age,
     String? avatarUrl,
   });

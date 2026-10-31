@@ -330,6 +330,12 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildNeonStatusBanner(PtPalette p) {
     final isOnline = _chatService.isConnected;
     final user = _chatService.currentUser;
+    final profile = AuthScope.maybeOf(context)?.profile;
+    final profilePhone = (profile?.phone ?? '').trim();
+    final userPhone = (user?.phone ?? '').trim();
+    final String effectivePhone = profilePhone.isNotEmpty
+        ? profilePhone
+        : userPhone;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
@@ -378,7 +384,9 @@ class _ChatScreenState extends State<ChatScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              user != null ? '${user.name} (${user.phone.isNotEmpty ? user.phone : '@${user.username}'})' : 'Đang tải tài khoản...',
+              user != null
+                  ? '${user.name} (${effectivePhone.isNotEmpty ? effectivePhone : '@${user.username}'})'
+                  : 'Đang tải tài khoản...',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(

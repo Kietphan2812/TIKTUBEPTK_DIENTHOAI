@@ -392,6 +392,7 @@ class ApiClient implements TikTubeApi {
   Future<Profile> updateProfile({
     required String name,
     required String email,
+    String? phone,
     int? age,
     String? avatarUrl,
   }) async {
@@ -403,12 +404,16 @@ class ApiClient implements TikTubeApi {
     if (avatarUrl != null) {
       body['avatarUrl'] = avatarUrl;
     }
+    if (phone != null && phone.isNotEmpty) {
+      body['phone'] = phone;
+    }
     final data = await _request(
       'PATCH',
       _uri('/api/me'),
       body: body,
     );
-    return Profile.fromJson(data['profile'] as Map<String, dynamic>);
+    final profile = Profile.fromJson(data['profile'] as Map<String, dynamic>);
+    return profile.copyWith(phone: phone ?? profile.phone);
   }
 
   // ---------------------------------------------------------------------------

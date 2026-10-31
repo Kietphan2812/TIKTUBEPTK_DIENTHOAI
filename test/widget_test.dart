@@ -167,12 +167,14 @@ class _OfflineApi implements TikTubeApi {
   Future<Profile> updateProfile({
     required String name,
     required String email,
+    String? phone,
     int? age,
     String? avatarUrl,
   }) async => Profile(
         userKey: 'kiepthan4',
         name: name,
         email: email,
+        phone: phone,
         age: age,
         avatarUrl: avatarUrl,
       );
