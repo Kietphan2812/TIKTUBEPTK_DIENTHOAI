@@ -30,11 +30,13 @@ class ChatService extends ChangeNotifier {
   static const String _prefMessagesKey = 'tiktube_messages_v2';
   static const String _prefRequestsKey = 'tiktube_requests_v2';
   static const String _prefCurrentUserKey = 'tiktube_current_chat_user_v2';
+  static const String _prefDeletedFriendsKey = 'tiktube_deleted_friends_v2';
 
   final List<Friend> _friends = <Friend>[];
   final List<Friend> _allUsers = <Friend>[];
   final List<FriendRequest> _requests = <FriendRequest>[];
   final Map<String, List<ChatMessage>> _messages = <String, List<ChatMessage>>{};
+  final Set<String> _deletedFriendIds = <String>{};
 
   Friend? _currentUser;
   io.Socket? _socket;
@@ -53,7 +55,9 @@ class ChatService extends ChangeNotifier {
       List<FriendRequest>.unmodifiable(_requests);
   Stream<Map<String, dynamic>> get callEvents => _callEventsController.stream;
 
-  int get totalUnread => _friends.fold(0, (sum, f) => sum + f.unreadCount);
+  int get totalUnread => _friends
+      .where((f) => f.id != 'my_cloud')
+      .fold(0, (sum, f) => sum + f.unreadCount);
 
   List<ChatMessage> getMessages(String friendId) {
     return List<ChatMessage>.unmodifiable(_messages[friendId] ?? <ChatMessage>[]);
@@ -76,6 +80,16 @@ class ChatService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
 
+      final deletedJson = prefs.getString(_prefDeletedFriendsKey);
+      if (deletedJson != null && deletedJson.isNotEmpty) {
+        try {
+          final list = jsonDecode(deletedJson) as List<dynamic>;
+          _deletedFriendIds
+            ..clear()
+            ..addAll(list.map((e) => e.toString()));
+        } catch (_) {}
+      }
+
       final userJson = prefs.getString(_prefCurrentUserKey);
       if (userJson != null && userJson.isNotEmpty) {
         try {
@@ -89,7 +103,9 @@ class ChatService extends ChangeNotifier {
         _friends
           ..clear()
           ..addAll(
-            list.map((e) => Friend.fromJson(e as Map<String, dynamic>)),
+            list
+                .map((e) => Friend.fromJson(e as Map<String, dynamic>))
+                .where((f) => f.id == 'my_cloud' || !_deletedFriendIds.contains(f.id)),
           );
       } else {
         _seedInitialFriends();
@@ -112,12 +128,28 @@ class ChatService extends ChangeNotifier {
         _messages.clear();
         map.forEach((key, val) {
           if (val is List) {
-            _messages[key] = val
-                .map((e) => ChatMessage.fromJson(
-                      e as Map<String, dynamic>,
-                      currentUserId: _currentUser?.id,
-                    ))
-                .toList();
+            final List<ChatMessage> deduped = <ChatMessage>[];
+            for (final e in val) {
+              if (e is Map) {
+                final m = ChatMessage.fromJson(
+                  Map<String, dynamic>.from(e),
+                  currentUserId: _currentUser?.id,
+                );
+                final isDup = deduped.any((d) =>
+                    d.id == m.id ||
+                    (d.isMe == m.isMe &&
+                        d.text == m.text &&
+                        d.imageUrl == m.imageUrl &&
+                        d.time == m.time &&
+                        (d.timestamp != null &&
+                            m.timestamp != null &&
+                            (d.timestamp! - m.timestamp!).abs() < 5000)));
+                if (!isDup) {
+                  deduped.add(m);
+                }
+              }
+            }
+            _messages[key] = deduped;
           }
         });
       }
@@ -210,8 +242,9 @@ class ChatService extends ChangeNotifier {
           // Cloud của tôi (Lưu trữ đám mây cá nhân) luôn nằm ở vị trí đầu tiên
           newFriendsList.add(myCloud);
 
-          // Thêm các bạn bè thật từ Neon Postgres
+          // Thêm các bạn bè thật từ Neon Postgres (loại trừ các bạn bè đã bị xóa)
           for (final friendId in myFriendIds) {
+            if (_deletedFriendIds.contains(friendId)) continue;
             final realUser = _allUsers.firstWhere(
               (u) => u.id == friendId,
               orElse: () => Friend(
@@ -227,11 +260,12 @@ class ChatService extends ChangeNotifier {
             }
           }
 
-          // Thêm các người dùng khác trong hệ thống để dễ dàng trò chuyện
-          for (final user in _allUsers) {
-            if (user.id != _currentUser!.id &&
-                !newFriendsList.any((f) => f.id == user.id)) {
-              newFriendsList.add(user);
+          // Giữ lại các bạn bè hiện có trong danh bạ nếu không nằm trong danh sách đã xóa
+          for (final f in _friends) {
+            if (f.id != 'my_cloud' &&
+                !_deletedFriendIds.contains(f.id) &&
+                !newFriendsList.any((nf) => nf.id == f.id)) {
+              newFriendsList.add(f);
             }
           }
 
@@ -326,13 +360,28 @@ class ChatService extends ChangeNotifier {
           if (targetId != null && rawMsgs is List) {
             final List<ChatMessage> list = <ChatMessage>[];
             for (final m in rawMsgs) {
+              ChatMessage? parsed;
               if (m is Map<String, dynamic>) {
-                list.add(ChatMessage.fromJson(m, currentUserId: _currentUser?.id));
+                parsed = ChatMessage.fromJson(m, currentUserId: _currentUser?.id);
               } else if (m is Map) {
-                list.add(ChatMessage.fromJson(
+                parsed = ChatMessage.fromJson(
                   Map<String, dynamic>.from(m),
                   currentUserId: _currentUser?.id,
-                ));
+                );
+              }
+              if (parsed != null) {
+                final isDup = list.any((existing) =>
+                    existing.id == parsed!.id ||
+                    (existing.isMe == parsed.isMe &&
+                        existing.text == parsed.text &&
+                        existing.imageUrl == parsed.imageUrl &&
+                        existing.time == parsed.time &&
+                        (existing.timestamp != null &&
+                            parsed.timestamp != null &&
+                            (existing.timestamp! - parsed.timestamp!).abs() < 5000)));
+                if (!isDup) {
+                  list.add(parsed);
+                }
               }
             }
 
@@ -369,8 +418,45 @@ class ChatService extends ChangeNotifier {
 
           if (partnerId.isNotEmpty) {
             final list = _messages.putIfAbsent(partnerId, () => <ChatMessage>[]);
-            if (!list.any((m) => m.id == msg.id)) {
-              list.add(msg);
+            if (msg.isMe) {
+              // 1. Kiểm tra xem đã có tin nhắn trùng ID chưa
+              final exactIdx = list.indexWhere((m) => m.id == msg.id);
+              if (exactIdx >= 0) {
+                list[exactIdx] = msg;
+              } else {
+                // 2. Tìm tin nhắn gửi lạc quan (optimistic) vừa chèn tại máy để cập nhật lại ID từ server
+                final optIdx = list.lastIndexWhere((m) =>
+                    m.isMe &&
+                    m.text == msg.text &&
+                    m.imageUrl == msg.imageUrl &&
+                    (msg.timestamp == null ||
+                        m.timestamp == null ||
+                        (msg.timestamp! - m.timestamp!).abs() < 60000));
+                if (optIdx >= 0) {
+                  list[optIdx] = msg;
+                } else {
+                  list.add(msg);
+                }
+              }
+            } else {
+              // Tin nhắn đối phương gửi tới
+              final exactIdx = list.indexWhere((m) => m.id == msg.id);
+              if (exactIdx >= 0) {
+                list[exactIdx] = msg;
+              } else {
+                final isDup = list.any((m) =>
+                    !m.isMe &&
+                    m.senderId == msg.senderId &&
+                    m.text == msg.text &&
+                    m.imageUrl == msg.imageUrl &&
+                    m.time == msg.time &&
+                    (msg.timestamp != null &&
+                        m.timestamp != null &&
+                        (msg.timestamp! - m.timestamp!).abs() < 5000));
+                if (!isDup) {
+                  list.add(msg);
+                }
+              }
             }
 
             final idx = _friends.indexWhere((f) => f.id == partnerId);
@@ -385,6 +471,22 @@ class ChatService extends ChangeNotifier {
               );
             }
 
+            notifyListeners();
+            unawaited(_saveToStorage());
+          }
+        }
+      });
+
+      // Nhận sự kiện bị hủy / xóa kết bạn
+      _socket!.on('friend:removed', (data) {
+        if (data is Map) {
+          final removedId = data['removedFriendId']?.toString() ??
+              data['targetUserId']?.toString() ??
+              data['friendId']?.toString();
+          if (removedId != null && removedId.isNotEmpty && removedId != 'my_cloud') {
+            _deletedFriendIds.add(removedId);
+            _friends.removeWhere((f) => f.id == removedId);
+            _messages.remove(removedId);
             notifyListeners();
             unawaited(_saveToStorage());
           }
@@ -514,6 +616,10 @@ class ChatService extends ChangeNotifier {
         _prefRequestsKey,
         jsonEncode(_requests.map((e) => e.toJson()).toList()),
       );
+      await prefs.setString(
+        _prefDeletedFriendsKey,
+        jsonEncode(_deletedFriendIds.toList()),
+      );
       final map = <String, dynamic>{};
       _messages.forEach((k, v) {
         map[k] = v.map((m) => m.toJson()).toList();
@@ -557,6 +663,7 @@ class ChatService extends ChangeNotifier {
   }
 
   Future<void> sendFriendRequest(Friend target) async {
+    _deletedFriendIds.remove(target.id);
     if (isFriend(target.id)) return;
 
     if (_socket != null && _socket!.connected) {
@@ -569,6 +676,7 @@ class ChatService extends ChangeNotifier {
   }
 
   Future<void> acceptFriendRequest(FriendRequest req) async {
+    _deletedFriendIds.remove(req.id);
     _requests.removeWhere((r) => r.id == req.id);
 
     if (_socket != null && _socket!.connected) {
@@ -589,6 +697,36 @@ class ChatService extends ChangeNotifier {
         lastMessageTime: 'Vừa xong',
       ),
     );
+    notifyListeners();
+    await _saveToStorage();
+  }
+
+  /// Xóa bạn bè khỏi danh bạ và đồng bộ Neon PostgreSQL
+  Future<void> removeFriend(String friendId) async {
+    if (friendId == 'my_cloud') return;
+
+    _deletedFriendIds.add(friendId);
+    _friends.removeWhere((f) => f.id == friendId);
+    _messages.remove(friendId);
+
+    if (_socket != null && _socket!.connected) {
+      _socket!.emit('friend:remove', {
+        'userId': _currentUser?.id,
+        'targetUserId': friendId,
+      });
+    }
+
+    try {
+      await http.post(
+        Uri.parse('$_baseUrl/api/friends/remove'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'userId': _currentUser?.id,
+          'targetUserId': friendId,
+        }),
+      ).timeout(const Duration(seconds: 5));
+    } catch (_) {}
+
     notifyListeners();
     await _saveToStorage();
   }

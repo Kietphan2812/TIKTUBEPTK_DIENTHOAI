@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../data/chat_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import 'logo.dart';
@@ -85,10 +86,19 @@ class TopBar extends StatelessWidget {
                     onTap: () => onAction('Thông báo'),
                   ),
                   if (!isMobile)
-                    _IconButton(
-                      icon: Icons.chat_bubble_outline_rounded,
-                      tooltip: 'Nhắn tin & Bạn bè',
-                      onTap: () => onAction('Nhắn tin'),
+                    ListenableBuilder(
+                      listenable: ChatService.instance,
+                      builder: (context, _) {
+                        final unread = ChatService.instance.totalUnread;
+                        return _IconButton(
+                          icon: Icons.chat_bubble_outline_rounded,
+                          tooltip: unread > 0
+                              ? 'Nhắn tin & Bạn bè ($unread chưa đọc)'
+                              : 'Nhắn tin & Bạn bè',
+                          badgeCount: unread,
+                          onTap: () => onAction('Nhắn tin'),
+                        );
+                      },
                     ),
                   if (showPrimaryNav)
                     _NavItem(

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../data/api_client.dart';
+import '../data/chat_service.dart';
 import '../data/tiktube_api.dart';
 import '../models/app_notification.dart';
 import '../models/recommended_feed.dart';
@@ -81,6 +82,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     unawaited(_loadRecommended());
     unawaited(_loadTrending());
     unawaited(_loadUnreadNotifications());
+    unawaited(ChatService.instance.init());
     _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       if (!mounted) return;
       _pollTick++;
@@ -91,6 +93,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       unawaited(_loadTrending(silent: true));
       unawaited(_loadUnreadNotifications());
+    unawaited(ChatService.instance.init());
     });
   }
 
@@ -242,6 +245,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       unawaited(_loadRecommended(silent: true));
       unawaited(_loadTrending(silent: true));
       unawaited(_loadUnreadNotifications());
+    unawaited(ChatService.instance.init());
     }
   }
 
@@ -356,6 +360,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     unawaited(_loadRecommended(silent: true));
     unawaited(_loadTrending(silent: true));
     unawaited(_loadUnreadNotifications());
+    unawaited(ChatService.instance.init());
   }
 
   Future<void> _openUpload() async {
@@ -1012,10 +1017,17 @@ class _MobileBottomNav extends StatelessWidget {
                   onTap: () => onTap('Xem video'),
                 ),
                 _MobileUploadButton(onTap: () => onTap('Đăng Video')),
-                _MobileNavButton(
-                  icon: Icons.chat_bubble_outline_rounded,
-                  label: 'Nhắn tin',
-                  onTap: () => onTap('Nhắn tin'),
+                ListenableBuilder(
+                  listenable: ChatService.instance,
+                  builder: (context, _) {
+                    final unread = ChatService.instance.totalUnread;
+                    return _MobileNavButton(
+                      icon: Icons.chat_bubble_outline_rounded,
+                      label: 'Nhắn tin',
+                      badgeCount: unread,
+                      onTap: () => onTap('Nhắn tin'),
+                    );
+                  },
                 ),
                 _MobileNavButton(
                   icon: Icons.subscriptions_outlined,
@@ -1047,12 +1059,14 @@ class _MobileNavButton extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.active = false,
+    this.badgeCount = 0,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
   final bool active;
+  final int badgeCount;
 
   @override
   Widget build(BuildContext context) {
@@ -1066,7 +1080,36 @@ class _MobileNavButton extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            Icon(icon, size: 22, color: color),
+            Stack(
+              clipBehavior: Clip.none,
+              children: <Widget>[
+                Icon(icon, size: 22, color: color),
+                if (badgeCount > 0)
+                  Positioned(
+                    top: -4,
+                    right: -8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: p.brandRed,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      constraints: const BoxConstraints(minWidth: 15, minHeight: 15),
+                      alignment: Alignment.center,
+                      child: Text(
+                        badgeCount > 99 ? '99+' : '$badgeCount',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 8.5,
+                          fontWeight: FontWeight.w800,
+                          height: 1,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(height: 2),
             Text(
               label,

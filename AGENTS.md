@@ -92,6 +92,22 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
   - Hộp thoại nhận cuộc gọi đến với 2 nút Trả lời 🟢 và Từ chối 🔴.
 - **Điểm truy cập:** Nút Nhắn tin trên TopBar (Desktop/Tablet), thanh điều hướng đáy _MobileBottomNav (Mobile), và cụm nút hành động trên WatchScreen.
 
+### 3.7. Sửa lỗi tin nhắn kép, Xóa bạn bè & Badge thông báo tin nhắn chưa đọc
+- **Khử trùng lặp tin nhắn (Message Deduplication):**
+  - Khi gửi tin nhắn, client chèn tin nhắn lạc quan (optimistic) hiển thị ngay lập tức. Khi Socket.io nhận sự kiện `message:new` từ server Neon, hệ thống tìm tin nhắn tương ứng theo nội dung text, ảnh và timestamp gần nhất để cập nhật ID máy chủ thay vì chèn mới lặp lại (ngăn chặn tình trạng 1 tin nhắn hiển thị 2 lần).
+  - Khử trùng lặp cả trong lịch sử tải `chat:history` và khi khôi phục từ `SharedPreferences`.
+  - Bổ sung cờ chặn gửi kép `_isSending` tránh bấm nút gửi nhiều lần liên tiếp.
+- **Tính năng Xóa bạn bè (Unfriend):**
+  - Hỗ trợ xóa bạn bè ở cả 2 vị trí: menu 3 chấm trên thanh tiêu đề cuộc trò chuyện (Mobile & Desktop) và nút icon thùng rác / người xóa trên danh sách tab "Bạn bè".
+  - Hộp thoại xác nhận an toàn trước khi xóa: "Xác nhận xóa bạn bè khỏi Neon SQL".
+  - Khi xác nhận, gửi sự kiện `friend:remove` qua Socket.io và gọi API `POST /api/friends/remove`, đồng thời lưu `_deletedFriendIds` vào bộ nhớ máy để bạn bè đã xóa không tự ý xuất hiện lại khi đồng bộ.
+  - Lắng nghe sự kiện `friend:removed` thời gian thực từ đối phương để cập nhật danh bạ ngay lập tức.
+- **Huy hiệu thông báo tin nhắn chưa đọc (Unread Message Badge):**
+  - Thanh điều hướng đáy điện thoại (`_MobileBottomNav`): hiển thị badge số màu đỏ bo tròn trực tiếp trên icon `Nhắn tin`.
+  - Thanh TopBar trên Desktop/Tablet: hiển thị badge số tin nhắn chưa đọc trên icon chat.
+  - Tự động cập nhật thời gian thực khi có người gửi tin nhắn đến và tự động reset về 0 khi người dùng bấm vào xem cuộc trò chuyện.
+  - `ChatService.instance.init()` được gọi ngay từ `HomeScreen` để kết nối Socket.io và cập nhật badge ngay từ khi mở app.
+
 ---
 
 ### 3.5. Quy chuẩn về cài đặt iOS (.ipa)

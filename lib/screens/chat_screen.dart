@@ -45,6 +45,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String _searchFilter = '';
   StreamSubscription<Map<String, dynamic>>? _callSub;
   bool _isUploadingImage = false;
+  bool _isSending = false;
 
   @override
   void initState() {
@@ -145,11 +146,82 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _sendMessage() async {
     final text = _textController.text.trim();
-    if (text.isEmpty || _selectedFriend == null) return;
+    if (text.isEmpty || _selectedFriend == null || _isSending) return;
 
+    _isSending = true;
     _textController.clear();
-    await _chatService.sendMessage(_selectedFriend!.id, text);
-    _scrollToBottom();
+    try {
+      await _chatService.sendMessage(_selectedFriend!.id, text);
+      _scrollToBottom();
+    } finally {
+      if (mounted) setState(() => _isSending = false);
+    }
+  }
+
+  void _confirmRemoveFriend(Friend friend) {
+    if (friend.id == 'my_cloud') return;
+    showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final p = ctx.palette;
+        return AlertDialog(
+          backgroundColor: p.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: <Widget>[
+              const Icon(Icons.person_remove_rounded, color: Colors.redAccent, size: 22),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Xóa bạn bè',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: p.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            'Bạn có chắc chắn muốn xóa "${friend.name}" khỏi danh sách bạn bè không?\n\nQuan hệ bạn bè sẽ được hủy trên máy chủ Neon SQL.',
+            style: TextStyle(fontSize: 13, height: 1.45, color: p.textSecondary),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text('Hủy', style: TextStyle(color: p.textSecondary)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.redAccent,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('Xác nhận xóa'),
+            ),
+          ],
+        );
+      },
+    ).then((confirmed) async {
+      if (confirmed == true && mounted) {
+        final name = friend.name;
+        if (_selectedFriend?.id == friend.id) {
+          setState(() => _selectedFriend = null);
+        }
+        await _chatService.removeFriend(friend.id);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Đã xóa $name khỏi danh sách bạn bè'),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    });
   }
 
 
@@ -420,24 +492,56 @@ class _ChatScreenState extends State<ChatScreen> {
                     ],
                   ),
                 ),
-                IconButton(
-                  onPressed: _makeAudioCall,
-                  icon: Icon(
-                    Icons.phone_outlined,
-                    color: p.textPrimary,
-                    size: 21,
+                if (_selectedFriend!.id != 'my_cloud') ...<Widget>[
+                  IconButton(
+                    onPressed: _makeAudioCall,
+                    icon: Icon(
+                      Icons.phone_outlined,
+                      color: p.textPrimary,
+                      size: 21,
+                    ),
+                    tooltip: 'Gọi thoại',
                   ),
-                  tooltip: 'Gọi thoại',
-                ),
-                IconButton(
-                  onPressed: _makeVideoCall,
-                  icon: Icon(
-                    Icons.videocam_outlined,
-                    color: p.textPrimary,
-                    size: 23,
+                  IconButton(
+                    onPressed: _makeVideoCall,
+                    icon: Icon(
+                      Icons.videocam_outlined,
+                      color: p.textPrimary,
+                      size: 23,
+                    ),
+                    tooltip: 'Gọi video',
                   ),
-                  tooltip: 'Gọi video',
-                ),
+                  PopupMenuButton<String>(
+                    icon: Icon(Icons.more_vert_rounded, color: p.textSecondary, size: 21),
+                    tooltip: 'Tùy chọn',
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    color: p.surface,
+                    onSelected: (val) {
+                      if (val == 'remove') {
+                        _confirmRemoveFriend(_selectedFriend!);
+                      }
+                    },
+                    itemBuilder: (context) => <PopupMenuEntry<String>>[
+                      const PopupMenuItem<String>(
+                        value: 'remove',
+                        child: Row(
+                          children: <Widget>[
+                            Icon(Icons.person_remove_rounded, color: Colors.redAccent, size: 18),
+                            SizedBox(width: 10),
+                            Text(
+                              'Xóa bạn bè',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.redAccent,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -923,44 +1027,55 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: <Widget>[
-                    if (!isContactMode && friend.lastMessageTime.isNotEmpty)
-                      Text(
-                        friend.lastMessageTime,
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          color: friend.unreadCount > 0
-                              ? p.brandRed
-                              : p.textSecondary,
-                          fontWeight: friend.unreadCount > 0
-                              ? FontWeight.w700
-                              : FontWeight.w400,
-                        ),
-                      ),
-                    const SizedBox(height: 4),
-                    if (friend.unreadCount > 0)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: p.brandRed,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          '${friend.unreadCount}',
-                          style: const TextStyle(
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
+                if (isContactMode && friend.id != 'my_cloud')
+                  IconButton(
+                    icon: const Icon(
+                      Icons.person_remove_outlined,
+                      size: 20,
+                      color: Colors.redAccent,
+                    ),
+                    tooltip: 'Xóa bạn bè',
+                    onPressed: () => _confirmRemoveFriend(friend),
+                  )
+                else
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: <Widget>[
+                      if (!isContactMode && friend.lastMessageTime.isNotEmpty)
+                        Text(
+                          friend.lastMessageTime,
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            color: friend.unreadCount > 0
+                                ? p.brandRed
+                                : p.textSecondary,
+                            fontWeight: friend.unreadCount > 0
+                                ? FontWeight.w700
+                                : FontWeight.w400,
                           ),
                         ),
-                      ),
-                  ],
-                ),
+                      const SizedBox(height: 4),
+                      if (friend.unreadCount > 0)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: p.brandRed,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            '${friend.unreadCount}',
+                            style: const TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
               ],
             ),
           ),
@@ -1042,6 +1157,36 @@ class _ChatScreenState extends State<ChatScreen> {
                     onPressed: _makeVideoCall,
                     icon: Icon(Icons.videocam_outlined, color: p.textPrimary, size: 23),
                     tooltip: 'Gọi video',
+                  ),
+                  PopupMenuButton<String>(
+                    icon: Icon(Icons.more_vert_rounded, color: p.textSecondary, size: 21),
+                    tooltip: 'Tùy chọn',
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    color: p.surface,
+                    onSelected: (val) {
+                      if (val == 'remove') {
+                        _confirmRemoveFriend(friend);
+                      }
+                    },
+                    itemBuilder: (context) => <PopupMenuEntry<String>>[
+                      const PopupMenuItem<String>(
+                        value: 'remove',
+                        child: Row(
+                          children: <Widget>[
+                            Icon(Icons.person_remove_rounded, color: Colors.redAccent, size: 18),
+                            SizedBox(width: 10),
+                            Text(
+                              'Xóa bạn bè',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.redAccent,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ],
