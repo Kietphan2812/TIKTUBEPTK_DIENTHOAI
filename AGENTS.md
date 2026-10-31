@@ -137,6 +137,26 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
 
 ---
 
+### 3.11. Tái thiết kế Giao diện Nhắn tin di động hiện đại (Modern Mobile Chat App Redesign)
+- **Header & Trạng thái di động tích hợp:**
+  - Loại bỏ hoàn toàn thanh trạng thái gồ ghề kiểu web debug (`_buildNeonStatusBanner`).
+  - Tích hợp avatar cá nhân có chấm xanh Neon SQL thời gian thực, tiêu đề "Tin nhắn & Bạn bè", phụ đề số điện thoại/username, cụm nút Tìm kiếm, Lời mời kết bạn có badge số đỏ, và nút Thêm bạn.
+- **Thanh Khoảnh khắc & Bạn bè đang Online (Stories / Active Bar):**
+  - Bổ sung thanh cuộn ngang bạn bè đang hoạt động với viền sáng gradient và chấm xanh hoạt động trực tiếp dưới thanh tìm kiếm.
+  - Vị trí đầu tiên dành riêng cho "Cloud của tôi" với biểu tượng đám mây phát sáng. Bấm vào bất kỳ người bạn nào sẽ mở ngay cuộc trò chuyện.
+- **Bộ lọc danh sách dạng viên thuốc (Filter Chips):**
+  - Hỗ trợ chuyển đổi nhanh: `Tất cả`, `Chưa đọc` (kèm badge đỏ), `Danh bạ (n)`, và `Cloud của tôi`.
+- **Thẻ cuộc trò chuyện & Tab Danh bạ di động cao cấp:**
+  - Hiển thị thời gian tin nhắn góc phải, preview tin nhắn/ảnh/cuộc gọi kèm tiền tố `Bạn:`, badge tin nhắn chưa đọc đỏ nổi bật.
+  - Nhấn giữ cuộc trò chuyện để mở Bottom Sheet tiện ích: xem thông tin cá nhân, gọi thoại, gọi video, xóa bạn bè.
+  - Tab Danh bạ tổ chức chuyên nghiệp: các tiện ích nhanh "Thêm bạn mới", "Lời mời kết bạn", "Cloud của tôi", và danh sách bạn bè kèm nút gọi/nhắn tin trực tiếp.
+- **Tiện ích trò chuyện mở rộng:**
+  - Thanh chọn emoji cảm xúc nhanh (`👍`, `❤️`, `😂`, `🔥`, `🎉`, v.v.).
+  - Xem ảnh phóng to toàn màn hình (`InteractiveViewer`) khi nhấn vào ảnh đã gửi/nhận.
+  - Nút soạn tin/thêm bạn nhanh dạng FAB (Floating Action Button) phong cách ứng dụng di động chuẩn.
+
+---
+
 ### 3.5. Quy chuẩn về cài đặt iOS (.ipa)
 - Định dạng `.apk` chỉ cài được trên Android.
 - Định dạng `.ipa` của iOS KHÔNG thể tạo bằng cách đổi tên tệp hay chỉnh sửa file thủ công; bắt buộc phải build trên macOS có Xcode và có chứng chỉ/tài khoản Apple Developer (hoặc dịch vụ CI/CD macOS như GitHub Actions / Codemagic).
