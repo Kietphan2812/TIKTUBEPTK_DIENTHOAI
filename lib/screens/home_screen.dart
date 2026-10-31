@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../auth/auth_scope.dart';
 import '../data/api_client.dart';
 import '../data/chat_service.dart';
 import '../data/tiktube_api.dart';
@@ -71,6 +72,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<Video> get _visibleVideos {
     if (_searching || !_forYou) return _videos;
     return _recommendedFeed?.videos ?? const <Video>[];
+  }
+
+  String? _lastSyncedUserKey;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final profile = AuthScope.maybeOf(context)?.profile;
+    if (profile != null && profile.userKey != _lastSyncedUserKey) {
+      _lastSyncedUserKey = profile.userKey;
+      unawaited(ChatService.instance.syncWithProfile(profile));
+    }
   }
 
   @override

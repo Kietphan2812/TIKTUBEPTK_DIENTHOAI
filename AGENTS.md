@@ -108,6 +108,16 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
   - Tự động cập nhật thời gian thực khi có người gửi tin nhắn đến và tự động reset về 0 khi người dùng bấm vào xem cuộc trò chuyện.
   - `ChatService.instance.init()` được gọi ngay từ `HomeScreen` để kết nối Socket.io và cập nhật badge ngay từ khi mở app.
 
+### 3.8. Đồng bộ tài khoản Chat theo phiên TIKTUBE & Phân lập bạn bè theo từng tài khoản
+- **Đồng bộ tự động theo phiên đăng nhập (Profile Binding):**
+  - Tài khoản chat `_currentUser` trong `ChatService` tự động đồng bộ 100% với tài khoản TIKTUBE đang đăng nhập (`AuthController.profile` / `KIETPHAN2812`).
+  - Loại bỏ hoàn toàn fallback cứng cũ (`phantaanskieetj` / `0338351410`).
+  - Nếu tài khoản TIKTUBE chưa từng có trên Neon SQL, hệ thống tự động đăng ký tạo người dùng mới trên Neon ngay lập tức.
+- **Phân lập danh bạ bạn bè & tin nhắn (Account-scoped Isolation):**
+  - Mỗi tài khoản chỉ hiển thị danh bạ bạn bè của CHÍNH tài khoản đó được lưu trên Neon PostgreSQL (`myFriendIds` của chính `_currentUser.id`) và Cloud của tôi. Tài khoản mới có 0 bạn bè sẽ hiển thị danh sách trống kèm Cloud cá nhân, tuyệt đối không bị dính 3 bạn bè cố định của tài khoản khác.
+  - Khi người dùng đăng xuất hoặc chuyển sang tài khoản khác, hệ thống tự động xóa bộ nhớ phiên cũ, nạp bộ nhớ đệm riêng biệt theo khóa `tiktube_friends_v3_<userKey>`, `tiktube_messages_v3_<userKey>` và tải danh bạ bạn bè thật của tài khoản mới từ Neon.
+  - Tích hợp lắng nghe tự động tại `AuthController` (`restore`, `_apply`, `logout`, `updateProfileCache`), `HomeScreen` và `ChatScreen` (`didChangeDependencies`).
+
 ---
 
 ### 3.5. Quy chuẩn về cài đặt iOS (.ipa)

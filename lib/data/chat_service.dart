@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import '../models/chat_contact.dart';
+import '../models/profile.dart';
 
 class ChatService extends ChangeNotifier {
   static const Friend myCloud = Friend(
@@ -26,11 +27,17 @@ class ChatService extends ChangeNotifier {
   static final ChatService instance = ChatService._();
 
   static const String _baseUrl = 'https://nhantinptk.onrender.com';
-  static const String _prefFriendsKey = 'tiktube_friends_v2';
-  static const String _prefMessagesKey = 'tiktube_messages_v2';
-  static const String _prefRequestsKey = 'tiktube_requests_v2';
-  static const String _prefCurrentUserKey = 'tiktube_current_chat_user_v2';
-  static const String _prefDeletedFriendsKey = 'tiktube_deleted_friends_v2';
+
+  String _userKey([String? key]) {
+    final k = key ?? _currentProfile?.userKey ?? _currentUser?.username ?? 'default';
+    return k.trim().toLowerCase();
+  }
+
+  String _prefFriendsKey([String? key]) => 'tiktube_friends_v3_${_userKey(key)}';
+  String _prefMessagesKey([String? key]) => 'tiktube_messages_v3_${_userKey(key)}';
+  String _prefRequestsKey([String? key]) => 'tiktube_requests_v3_${_userKey(key)}';
+  String _prefCurrentUserKey([String? key]) => 'tiktube_current_chat_user_v3_${_userKey(key)}';
+  String _prefDeletedFriendsKey([String? key]) => 'tiktube_deleted_friends_v3_${_userKey(key)}';
 
   final List<Friend> _friends = <Friend>[];
   final List<Friend> _allUsers = <Friend>[];
@@ -38,6 +45,7 @@ class ChatService extends ChangeNotifier {
   final Map<String, List<ChatMessage>> _messages = <String, List<ChatMessage>>{};
   final Set<String> _deletedFriendIds = <String>{};
 
+  Profile? _currentProfile;
   Friend? _currentUser;
   io.Socket? _socket;
   bool _initialized = false;
@@ -48,6 +56,7 @@ class ChatService extends ChangeNotifier {
 
   String get baseUrl => _baseUrl;
   bool get isConnected => _isConnected;
+  Profile? get currentProfile => _currentProfile;
   Friend? get currentUser => _currentUser;
   List<Friend> get friends => List<Friend>.unmodifiable(_friends);
   List<Friend> get allUsers => List<Friend>.unmodifiable(_allUsers);
@@ -63,7 +72,51 @@ class ChatService extends ChangeNotifier {
     return List<ChatMessage>.unmodifiable(_messages[friendId] ?? <ChatMessage>[]);
   }
 
-  Future<void> init({String? defaultAccount}) async {
+  /// Đồng bộ phiên tài khoản chat trực tiếp với tài khoản TIKTUBE đang đăng nhập
+  Future<void> syncWithProfile(Profile? profile) async {
+    if (profile == null) {
+      _currentProfile = null;
+      _currentUser = null;
+      _friends
+        ..clear()
+        ..add(myCloud);
+      _messages.clear();
+      _requests.clear();
+      _deletedFriendIds.clear();
+      _socket?.disconnect();
+      notifyListeners();
+      return;
+    }
+
+    final String newKey = profile.userKey.trim().toLowerCase();
+    final bool isUserSwitch = _currentProfile == null ||
+        _currentProfile!.userKey.trim().toLowerCase() != newKey;
+
+    _currentProfile = profile;
+
+    if (isUserSwitch) {
+      // 1. Chuyển đổi sang tài khoản mới: dọn dẹp bộ nhớ phiên tài khoản cũ
+      _friends
+        ..clear()
+        ..add(myCloud);
+      _messages.clear();
+      _requests.clear();
+      _deletedFriendIds.clear();
+
+      // 2. Nạp dữ liệu bộ nhớ đệm riêng của tài khoản này
+      await _loadFromLocalStorage(userKey: newKey);
+      notifyListeners();
+    }
+
+    // 3. Đồng bộ danh sách bạn bè thật từ Neon PostgreSQL của tài khoản này
+    await fetchNeonUsersAndSync(profile: profile);
+  }
+
+  Future<void> init({Profile? profile, String? defaultAccount}) async {
+    if (profile != null) {
+      await syncWithProfile(profile);
+      return;
+    }
     if (_initialized) return;
     _initialized = true;
 
@@ -76,11 +129,12 @@ class ChatService extends ChangeNotifier {
     _initSocket();
   }
 
-  Future<void> _loadFromLocalStorage() async {
+  Future<void> _loadFromLocalStorage({String? userKey}) async {
+    final k = _userKey(userKey);
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      final deletedJson = prefs.getString(_prefDeletedFriendsKey);
+      final deletedJson = prefs.getString(_prefDeletedFriendsKey(k));
       if (deletedJson != null && deletedJson.isNotEmpty) {
         try {
           final list = jsonDecode(deletedJson) as List<dynamic>;
@@ -90,28 +144,29 @@ class ChatService extends ChangeNotifier {
         } catch (_) {}
       }
 
-      final userJson = prefs.getString(_prefCurrentUserKey);
+      final userJson = prefs.getString(_prefCurrentUserKey(k));
       if (userJson != null && userJson.isNotEmpty) {
         try {
           _currentUser = Friend.fromJson(jsonDecode(userJson) as Map<String, dynamic>);
         } catch (_) {}
       }
 
-      final friendsJson = prefs.getString(_prefFriendsKey);
+      final friendsJson = prefs.getString(_prefFriendsKey(k));
       if (friendsJson != null && friendsJson.isNotEmpty) {
         final list = (jsonDecode(friendsJson) as List<dynamic>?) ?? <dynamic>[];
         _friends
           ..clear()
+          ..add(myCloud)
           ..addAll(
             list
                 .map((e) => Friend.fromJson(e as Map<String, dynamic>))
-                .where((f) => f.id == 'my_cloud' || !_deletedFriendIds.contains(f.id)),
+                .where((f) => f.id != 'my_cloud' && !_deletedFriendIds.contains(f.id)),
           );
       } else {
         _seedInitialFriends();
       }
 
-      final requestsJson = prefs.getString(_prefRequestsKey);
+      final requestsJson = prefs.getString(_prefRequestsKey(k));
       if (requestsJson != null && requestsJson.isNotEmpty) {
         final list = (jsonDecode(requestsJson) as List<dynamic>?) ?? <dynamic>[];
         _requests
@@ -121,7 +176,7 @@ class ChatService extends ChangeNotifier {
           );
       }
 
-      final messagesJson = prefs.getString(_prefMessagesKey);
+      final messagesJson = prefs.getString(_prefMessagesKey(k));
       if (messagesJson != null && messagesJson.isNotEmpty) {
         final map = (jsonDecode(messagesJson) as Map<String, dynamic>?) ??
             <String, dynamic>{};
@@ -166,7 +221,10 @@ class ChatService extends ChangeNotifier {
   }
 
   /// Đồng bộ người dùng và dữ liệu từ Neon Cloud PostgreSQL
-  Future<void> fetchNeonUsersAndSync({String? preferredAccount}) async {
+  Future<void> fetchNeonUsersAndSync({Profile? profile, String? preferredAccount}) async {
+    final effectiveProfile = profile ?? _currentProfile;
+    final String targetAccountKey = (effectiveProfile?.userKey ?? preferredAccount ?? '').trim().toLowerCase();
+
     try {
       final res = await http
           .get(Uri.parse('$_baseUrl/api/bootstrap'))
@@ -195,54 +253,95 @@ class ChatService extends ChangeNotifier {
           }
         }
 
-        // Chọn tài khoản hiện tại nếu chưa có
-        if (_currentUser == null || !_allUsers.any((u) => u.id == _currentUser!.id)) {
-          Friend? target;
-          if (preferredAccount != null && preferredAccount.isNotEmpty) {
-            target = _allUsers.firstWhere(
-              (u) =>
-                  u.phone == preferredAccount ||
-                  u.username.toLowerCase() == preferredAccount.toLowerCase(),
-              orElse: () => _allUsers.firstWhere(
-                (u) => u.username == 'phantaanskieetj' || u.phone == '0338351410',
-                orElse: () => _allUsers.isNotEmpty
-                    ? _allUsers.first
-                    : const Friend(
-                        id: 'user_1792224901328_512',
-                        name: 'Phantaanskieetj',
-                        username: 'phantaanskieetj',
-                        phone: '0338351410',
-                        avatar: '',
-                      ),
-              ),
-            );
-          } else {
-            target = _allUsers.firstWhere(
-              (u) => u.username == 'phantaanskieetj' || u.phone == '0338351410',
-              orElse: () => _allUsers.isNotEmpty
-                  ? _allUsers.first
-                  : const Friend(
-                      id: 'user_1792224901328_512',
-                      name: 'Phantaanskieetj',
-                      username: 'phantaanskieetj',
-                      phone: '0338351410',
-                      avatar: '',
-                    ),
+        // Tìm hoặc tạo tài khoản tương ứng trên Neon PostgreSQL
+        Friend? targetUser;
+        if (targetAccountKey.isNotEmpty) {
+          // 1. Tìm theo username chính xác
+          for (final u in _allUsers) {
+            if (u.username.toLowerCase() == targetAccountKey) {
+              targetUser = u;
+              break;
+            }
+          }
+
+          // 2. Tìm theo số điện thoại (nếu có)
+          final userPhone = (effectiveProfile?.phone ?? '').trim().replaceAll(' ', '');
+          if (targetUser == null && userPhone.isNotEmpty) {
+            for (final u in _allUsers) {
+              if (u.phone.isNotEmpty && u.phone == userPhone) {
+                targetUser = u;
+                break;
+              }
+            }
+          }
+
+          // 3. Tìm theo tên hiển thị
+          final userName = (effectiveProfile?.name ?? '').trim().toLowerCase();
+          if (targetUser == null && userName.isNotEmpty) {
+            for (final u in _allUsers) {
+              if (u.name.toLowerCase() == userName) {
+                targetUser = u;
+                break;
+              }
+            }
+          }
+
+          // 4. Nếu chưa có trên Neon, đăng ký tài khoản này vào bảng users của Neon
+          if (targetUser == null) {
+            final regPhone = userPhone.isNotEmpty
+                ? userPhone
+                : '03${(targetAccountKey.hashCode.abs() % 90000000 + 10000000)}';
+            final regName = (effectiveProfile?.name.isNotEmpty == true)
+                ? effectiveProfile!.name
+                : targetAccountKey;
+
+            try {
+              final regRes = await http.post(
+                Uri.parse('$_baseUrl/api/auth/register'),
+                headers: {'Content-Type': 'application/json'},
+                body: jsonEncode({
+                  'name': regName,
+                  'username': targetAccountKey,
+                  'phone': regPhone,
+                  'password': 'ptk_$targetAccountKey',
+                  'avatar': effectiveProfile?.avatarUrl ?? '',
+                }),
+              ).timeout(const Duration(seconds: 8));
+
+              if (regRes.statusCode == 200) {
+                final regData = jsonDecode(regRes.body) as Map<String, dynamic>;
+                if (regData['user'] != null) {
+                  targetUser = Friend.fromJson(
+                    Map<String, dynamic>.from(regData['user'] as Map),
+                  );
+                  _allUsers.add(targetUser);
+                }
+              }
+            } catch (_) {}
+
+            targetUser ??= Friend(
+              id: 'user_${targetAccountKey}_${DateTime.now().millisecondsSinceEpoch}',
+              name: regName,
+              username: targetAccountKey,
+              phone: regPhone,
+              avatar: effectiveProfile?.avatarUrl ?? '',
             );
           }
-          _currentUser = target;
-          unawaited(_saveCurrentUserToStorage());
+        } else if (_currentUser != null) {
+          targetUser = _allUsers.firstWhere(
+            (u) => u.id == _currentUser!.id,
+            orElse: () => _currentUser!,
+          );
         }
 
-        // Cập nhật danh sách bạn bè dựa trên quan hệ SQL Neon
-        if (_currentUser != null) {
+        if (targetUser != null) {
+          _currentUser = targetUser;
+          unawaited(_saveCurrentUserToStorage());
+
+          // CHỈ tải danh sách bạn bè của CHÍNH tài khoản này từ Neon
           final myFriendIds = userFriendsMap[_currentUser!.id] ?? <String>[];
-          final List<Friend> newFriendsList = <Friend>[];
+          final List<Friend> newFriendsList = <Friend>[myCloud];
 
-          // Cloud của tôi (Lưu trữ đám mây cá nhân) luôn nằm ở vị trí đầu tiên
-          newFriendsList.add(myCloud);
-
-          // Thêm các bạn bè thật từ Neon Postgres (loại trừ các bạn bè đã bị xóa)
           for (final friendId in myFriendIds) {
             if (_deletedFriendIds.contains(friendId)) continue;
             final realUser = _allUsers.firstWhere(
@@ -257,15 +356,6 @@ class ChatService extends ChangeNotifier {
             );
             if (!newFriendsList.any((f) => f.id == realUser.id)) {
               newFriendsList.add(realUser);
-            }
-          }
-
-          // Giữ lại các bạn bè hiện có trong danh bạ nếu không nằm trong danh sách đã xóa
-          for (final f in _friends) {
-            if (f.id != 'my_cloud' &&
-                !_deletedFriendIds.contains(f.id) &&
-                !newFriendsList.any((nf) => nf.id == f.id)) {
-              newFriendsList.add(f);
             }
           }
 
@@ -289,7 +379,8 @@ class ChatService extends ChangeNotifier {
             ..clear()
             ..addAll(newFriendsList);
 
-          // Nếu socket đã kết nối, tiến hành đăng nhập và tải lịch sử tin nhắn
+          // Khởi tạo Socket.io với tài khoản hiện tại
+          _initSocket();
           _emitSocketLogin();
           _fetchAllChatHistories();
         }
@@ -601,7 +692,7 @@ class ChatService extends ChangeNotifier {
     if (_currentUser == null) return;
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_prefCurrentUserKey, jsonEncode(_currentUser!.toJson()));
+      await prefs.setString(_prefCurrentUserKey(), jsonEncode(_currentUser!.toJson()));
     } catch (_) {}
   }
 
@@ -609,22 +700,22 @@ class ChatService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(
-        _prefFriendsKey,
+        _prefFriendsKey(),
         jsonEncode(_friends.map((e) => e.toJson()).toList()),
       );
       await prefs.setString(
-        _prefRequestsKey,
+        _prefRequestsKey(),
         jsonEncode(_requests.map((e) => e.toJson()).toList()),
       );
       await prefs.setString(
-        _prefDeletedFriendsKey,
+        _prefDeletedFriendsKey(),
         jsonEncode(_deletedFriendIds.toList()),
       );
       final map = <String, dynamic>{};
       _messages.forEach((k, v) {
         map[k] = v.map((m) => m.toJson()).toList();
       });
-      await prefs.setString(_prefMessagesKey, jsonEncode(map));
+      await prefs.setString(_prefMessagesKey(), jsonEncode(map));
     } catch (_) {}
   }
 
@@ -670,7 +761,8 @@ class ChatService extends ChangeNotifier {
       _socket!.emit('friend:add_direct', {'targetUserId': target.id});
     }
 
-    _friends.insert(0, target.copyWith(statusMessage: 'Đã kết bạn'));
+    final insertIdx = _friends.isNotEmpty ? 1 : 0;
+    _friends.insert(insertIdx, target.copyWith(statusMessage: 'Đã kết bạn'));
     notifyListeners();
     await _saveToStorage();
   }
@@ -683,8 +775,9 @@ class ChatService extends ChangeNotifier {
       _socket!.emit('friend:accept', {'senderId': req.id});
     }
 
+    final insertIdx = _friends.isNotEmpty ? 1 : 0;
     _friends.insert(
-      0,
+      insertIdx,
       Friend(
         id: req.id,
         name: req.fromName,

@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../data/chat_service.dart';
 import '../data/tiktube_api.dart';
 import '../models/auth_session.dart';
 import '../models/profile.dart';
@@ -58,12 +59,14 @@ class AuthController extends ChangeNotifier {
       _status = AuthStatus.authenticated;
       _api.setAuthToken(_token);
       notifyListeners();
+      unawaited(ChatService.instance.syncWithProfile(_profile));
 
       try {
         final Profile fresh = await _api.fetchProfile();
         _profile = fresh;
         await _persist();
         notifyListeners();
+        unawaited(ChatService.instance.syncWithProfile(_profile));
       } on ApiException catch (error) {
         if (error.statusCode == 401) {
           await _clearLocal();
@@ -113,6 +116,7 @@ class AuthController extends ChangeNotifier {
     _api.setAuthToken(_token);
     await _persist();
     notifyListeners();
+    unawaited(ChatService.instance.syncWithProfile(_profile));
   }
 
   /// Đăng xuất: luôn xoá phiên cục bộ, kể cả khi server không phản hồi.
@@ -125,6 +129,7 @@ class AuthController extends ChangeNotifier {
     _api.setAuthToken(null);
     await _clearLocal();
     notifyListeners();
+    unawaited(ChatService.instance.syncWithProfile(null));
   }
 
   /// Cập nhật hồ sơ đang hiển thị sau khi người dùng lưu ở trang tài khoản.
@@ -132,6 +137,7 @@ class AuthController extends ChangeNotifier {
     _profile = profile;
     unawaited(_persist());
     notifyListeners();
+    unawaited(ChatService.instance.syncWithProfile(profile));
   }
 
   Future<void> _persist() async {

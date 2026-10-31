@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
+import '../auth/auth_scope.dart';
 import '../data/chat_service.dart';
 import '../models/chat_contact.dart';
 import '../theme/app_theme.dart';
@@ -46,6 +47,15 @@ class _ChatScreenState extends State<ChatScreen> {
   StreamSubscription<Map<String, dynamic>>? _callSub;
   bool _isUploadingImage = false;
   bool _isSending = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final profile = AuthScope.maybeOf(context)?.profile;
+    if (profile != null) {
+      unawaited(_chatService.syncWithProfile(profile));
+    }
+  }
 
   @override
   void initState() {
