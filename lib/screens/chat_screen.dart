@@ -8,6 +8,22 @@ import '../widgets/add_friend_dialog.dart';
 import '../widgets/call_overlay.dart';
 import '../widgets/section_top_bar.dart';
 
+/// Bảng dải màu nghệ thuật cho Avatar người dùng
+const List<List<Color>> _avatarGradients = <List<Color>>[
+  <Color>[Color(0xFFFF2D55), Color(0xFFFF5277)], // Brand Red / Pink
+  <Color>[Color(0xFFFF6B6B), Color(0xFFFF8E53)], // Sunset Coral
+  <Color>[Color(0xFF8E2DE2), Color(0xFF4A00E0)], // Neon Purple
+  <Color>[Color(0xFF00B4DB), Color(0xFF0083B0)], // Ocean Blue
+  <Color>[Color(0xFF11998E), Color(0xFF38EF7D)], // Emerald Teal
+  <Color>[Color(0xFFFF9900), Color(0xFFFF5E62)], // Amber Gold
+];
+
+List<Color> _gradientFor(String name) {
+  if (name.isEmpty) return _avatarGradients[0];
+  final int code = name.codeUnits.fold<int>(0, (int a, int b) => a + b);
+  return _avatarGradients[code % _avatarGradients.length];
+}
+
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key, this.initialFriendId});
 
@@ -20,9 +36,12 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final ChatService _chatService = ChatService.instance;
   final TextEditingController _textController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+
   Friend? _selectedFriend;
-  int _activeTab = 0; // 0: Tin nhắn, 1: Danh bạ bạn bè
+  int _activeTab = 0; // 0: Tin nhắn, 1: Bạn bè
+  String _searchFilter = '';
 
   @override
   void initState() {
@@ -30,7 +49,6 @@ class _ChatScreenState extends State<ChatScreen> {
     unawaited(_chatService.init());
     _chatService.addListener(_onServiceChanged);
 
-    // Chọn bạn bè ban đầu nếu có
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (widget.initialFriendId != null) {
@@ -42,7 +60,9 @@ class _ChatScreenState extends State<ChatScreen> {
           return;
         }
       }
-      if (_chatService.friends.isNotEmpty) {
+      // Trên desktop tự chọn bạn bè đầu tiên nếu có
+      final double width = MediaQuery.sizeOf(context).width;
+      if (width >= 720 && _chatService.friends.isNotEmpty) {
         _selectFriend(_chatService.friends.first);
       }
     });
@@ -65,6 +85,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _chatService.removeListener(_onServiceChanged);
     _textController.dispose();
+    _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -134,7 +155,7 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: <Widget>[
           SectionTopBar(
-            title: 'Tin nhắn & Bạn bè (ZaloChat PTK)',
+            title: 'Tin nhắn & Bạn bè',
             onBack: () => Navigator.of(context).pop(),
           ),
           Expanded(
@@ -145,13 +166,13 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // Giao diện máy tính / Web rộng (2 cột Zalo PC)
+  // Giao diện 2 cột trên máy tính / Web
   Widget _buildWideLayout(PtPalette p) {
     return Row(
       children: <Widget>[
-        // Cột trái: Danh sách bạn bè & tab
+        // Cột trái: Tìm kiếm, Tabs & Danh sách hội thoại
         SizedBox(
-          width: 330,
+          width: 360,
           child: Container(
             decoration: BoxDecoration(
               color: p.surface,
@@ -159,8 +180,9 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             child: Column(
               children: <Widget>[
-                _buildSidebarHeader(p),
-                _buildTabRow(p),
+                _buildSearchAndAddBar(p),
+                _buildSegmentedTabs(p),
+                const SizedBox(height: 6),
                 Expanded(
                   child: _activeTab == 0
                       ? _buildChatList(p)
@@ -186,7 +208,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_selectedFriend != null) {
       return Column(
         children: <Widget>[
-          // Header chat với nút Back
+          // Header cuộc trò chuyện với bạn bè
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
@@ -197,8 +219,8 @@ class _ChatScreenState extends State<ChatScreen> {
               children: <Widget>[
                 IconButton(
                   onPressed: () => setState(() => _selectedFriend = null),
-                  icon: const Icon(Icons.arrow_back_rounded, size: 20),
-                  tooltip: 'Quay lại danh sách',
+                  icon: const Icon(Icons.arrow_back_rounded, size: 22),
+                  tooltip: 'Quay lại',
                 ),
                 _buildAvatar(_selectedFriend!, 38),
                 const SizedBox(width: 10),
@@ -206,57 +228,86 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      Text(
-                        _selectedFriend!.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: p.textPrimary,
-                        ),
+                      Row(
+                        children: <Widget>[
+                          Flexible(
+                            child: Text(
+                              _selectedFriend!.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w700,
+                                color: p.textPrimary,
+                              ),
+                            ),
+                          ),
+                          if (_isSpecialAccount(_selectedFriend!.id)) ...<Widget>[
+                            const SizedBox(width: 6),
+                            _buildBadgeTag(_selectedFriend!.id, p),
+                          ],
+                        ],
                       ),
-                      Text(
-                        _selectedFriend!.statusMessage,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Color(0xFF00C853),
-                          fontWeight: FontWeight.w600,
-                        ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: <Widget>[
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF00E676),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            _selectedFriend!.isOnline
+                                ? 'Đang hoạt động'
+                                : 'Hoạt động gần đây',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF00E676),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
                 IconButton(
                   onPressed: _makeAudioCall,
-                  icon: const Icon(
-                    Icons.phone_in_talk_rounded,
-                    color: Color(0xFF0068FF),
+                  icon: Icon(
+                    Icons.phone_outlined,
+                    color: p.textPrimary,
+                    size: 21,
                   ),
                   tooltip: 'Gọi thoại',
                 ),
                 IconButton(
                   onPressed: _makeVideoCall,
-                  icon: const Icon(
-                    Icons.videocam_rounded,
-                    color: Color(0xFF0068FF),
+                  icon: Icon(
+                    Icons.videocam_outlined,
+                    color: p.textPrimary,
+                    size: 23,
                   ),
                   tooltip: 'Gọi video',
                 ),
               ],
             ),
           ),
-          Expanded(child: _buildChatArea(p, _selectedFriend!, showHeader: false)),
+          Expanded(
+            child: _buildChatArea(p, _selectedFriend!, showHeader: false),
+          ),
         ],
       );
     }
 
     return Column(
       children: <Widget>[
-        _buildSidebarHeader(p),
-        _buildTabRow(p),
+        _buildSearchAndAddBar(p),
+        _buildSegmentedTabs(p),
+        const SizedBox(height: 6),
         Expanded(
           child: _activeTab == 0 ? _buildChatList(p) : _buildContactsList(p),
         ),
@@ -264,58 +315,87 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildSidebarHeader(PtPalette p) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: p.surface,
-        border: Border(bottom: BorderSide(color: p.border)),
-      ),
+  // Thanh tìm kiếm và nút Kết bạn phong cách TIKTUBE
+  Widget _buildSearchAndAddBar(PtPalette p) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
       child: Row(
         children: <Widget>[
-          Container(
-            padding: const EdgeInsets.all(7),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0068FF).withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(
-              Icons.forum_rounded,
-              color: Color(0xFF0068FF),
-              size: 20,
+          Expanded(
+            child: Container(
+              height: 40,
+              decoration: BoxDecoration(
+                color: p.surfaceAlt,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: p.border),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Row(
+                children: <Widget>[
+                  Icon(Icons.search_rounded, size: 18, color: p.textSecondary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (val) => setState(() => _searchFilter = val.trim().toLowerCase()),
+                      style: TextStyle(fontSize: 13, color: p.textPrimary),
+                      decoration: InputDecoration(
+                        hintText: 'Tìm kiếm bạn bè, tin nhắn...',
+                        hintStyle: TextStyle(
+                          fontSize: 12.5,
+                          color: p.textSecondary.withValues(alpha: 0.8),
+                        ),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  ),
+                  if (_searchFilter.isNotEmpty)
+                    GestureDetector(
+                      onTap: () {
+                        _searchController.clear();
+                        setState(() => _searchFilter = '');
+                      },
+                      child: Icon(Icons.close_rounded, size: 16, color: p.textSecondary),
+                    ),
+                ],
+              ),
             ),
           ),
           const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  'ZaloChat PTK',
-                  style: TextStyle(
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w800,
-                    color: p.textPrimary,
+          // Nút Thêm bạn dạng viên thuốc Gradient TIKTUBE
+          InkWell(
+            onTap: _showAddFriend,
+            borderRadius: BorderRadius.circular(999),
+            child: Container(
+              height: 40,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(colors: p.ctaGradient),
+                borderRadius: BorderRadius.circular(999),
+                boxShadow: <BoxShadow>[
+                  BoxShadow(
+                    color: p.brandRed.withValues(alpha: 0.28),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
                   ),
-                ),
-                Text(
-                  'Nhắn tin & Gọi điện thời gian thực',
-                  style: TextStyle(fontSize: 10.5, color: p.textSecondary),
-                ),
-              ],
-            ),
-          ),
-          ElevatedButton.icon(
-            onPressed: _showAddFriend,
-            icon: const Icon(Icons.person_add_rounded, size: 15),
-            label: const Text('Thêm bạn', style: TextStyle(fontSize: 11.5)),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0068FF),
-              foregroundColor: Colors.white,
-              elevation: 0,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+                ],
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(Icons.person_add_rounded, size: 16, color: Colors.white),
+                  SizedBox(width: 6),
+                  Text(
+                    'Kết bạn',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -324,147 +404,270 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildTabRow(PtPalette p) {
+  // Bộ chọn Tab dạng viên thuốc bo tròn Segmented Control
+  Widget _buildSegmentedTabs(PtPalette p) {
     final unread = _chatService.totalUnread;
+    final friendsCount = _chatService.friends.length;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: p.surfaceAlt,
-        border: Border(bottom: BorderSide(color: p.border)),
-      ),
-      child: Row(
-        children: <Widget>[
-          Expanded(
-            child: InkWell(
-              onTap: () => setState(() => _activeTab = 0),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 11),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      color: _activeTab == 0
-                          ? const Color(0xFF0068FF)
-                          : Colors.transparent,
-                      width: 2.5,
-                    ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      child: Container(
+        height: 38,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: p.chip,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: p.border),
+        ),
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: GestureDetector(
+                onTap: () => setState(() => _activeTab = 0),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  decoration: BoxDecoration(
+                    color: _activeTab == 0 ? p.surface : Colors.transparent,
+                    borderRadius: BorderRadius.circular(999),
+                    boxShadow: _activeTab == 0
+                        ? <BoxShadow>[
+                            BoxShadow(
+                              color: p.shadow,
+                              blurRadius: 4,
+                              offset: const Offset(0, 1),
+                            ),
+                          ]
+                        : null,
                   ),
-                ),
-                alignment: Alignment.center,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Text(
-                      'Tin nhắn',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: _activeTab == 0
-                            ? FontWeight.w700
-                            : FontWeight.w500,
-                        color: _activeTab == 0
-                            ? const Color(0xFF0068FF)
-                            : p.textSecondary,
+                  alignment: Alignment.center,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      Text(
+                        'Tin nhắn',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: _activeTab == 0
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: _activeTab == 0 ? p.textPrimary : p.textSecondary,
+                        ),
                       ),
-                    ),
-                    if (unread > 0) ...<Widget>[
-                      const SizedBox(width: 5),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 5,
-                          vertical: 1,
-                        ),
-                        decoration: BoxDecoration(
-                          color: p.brandRed,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          '$unread',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
+                      if (unread > 0) ...<Widget>[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: p.brandRed,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            '$unread',
+                            style: const TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),
-          ),
-          Expanded(
-            child: InkWell(
-              onTap: () => setState(() => _activeTab = 1),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 11),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      color: _activeTab == 1
-                          ? const Color(0xFF0068FF)
-                          : Colors.transparent,
-                      width: 2.5,
+            Expanded(
+              child: GestureDetector(
+                onTap: () => setState(() => _activeTab = 1),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  decoration: BoxDecoration(
+                    color: _activeTab == 1 ? p.surface : Colors.transparent,
+                    borderRadius: BorderRadius.circular(999),
+                    boxShadow: _activeTab == 1
+                        ? <BoxShadow>[
+                            BoxShadow(
+                              color: p.shadow,
+                              blurRadius: 4,
+                              offset: const Offset(0, 1),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    'Bạn bè ($friendsCount)',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: _activeTab == 1
+                          ? FontWeight.w700
+                          : FontWeight.w500,
+                      color: _activeTab == 1 ? p.textPrimary : p.textSecondary,
                     ),
                   ),
                 ),
-                alignment: Alignment.center,
-                child: Text(
-                  'Danh bạ (${_chatService.friends.length})',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight:
-                        _activeTab == 1 ? FontWeight.w700 : FontWeight.w500,
-                    color: _activeTab == 1
-                        ? const Color(0xFF0068FF)
-                        : p.textSecondary,
-                  ),
-                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
+  // Danh sách hội thoại trò chuyện
   Widget _buildChatList(PtPalette p) {
-    final friends = _chatService.friends;
+    List<Friend> friends = _chatService.friends;
+    if (_searchFilter.isNotEmpty) {
+      friends = friends.where((f) {
+        return f.name.toLowerCase().contains(_searchFilter) ||
+            f.username.toLowerCase().contains(_searchFilter) ||
+            f.lastMessage.toLowerCase().contains(_searchFilter);
+      }).toList();
+    }
+
     if (friends.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(Icons.chat_bubble_outline, size: 40, color: p.textSecondary),
-            const SizedBox(height: 10),
-            Text(
-              'Chưa có tin nhắn nào',
-              style: TextStyle(color: p.textSecondary, fontSize: 13),
-            ),
-            const SizedBox(height: 6),
-            TextButton(
-              onPressed: _showAddFriend,
-              child: const Text('Tìm kiếm và kết bạn ngay'),
-            ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: p.chip,
+                ),
+                child: Icon(
+                  Icons.chat_bubble_outline_rounded,
+                  size: 28,
+                  color: p.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                _searchFilter.isNotEmpty
+                    ? 'Không tìm thấy cuộc trò chuyện'
+                    : 'Chưa có tin nhắn nào',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: p.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Kết nối và nhắn tin với bạn bè trên TIKTUBE ngay.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: p.textSecondary),
+              ),
+              const SizedBox(height: 14),
+              OutlinedButton.icon(
+                onPressed: _showAddFriend,
+                icon: const Icon(Icons.person_add_alt_1_rounded, size: 16),
+                label: const Text('Tìm bạn bè ngay'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: p.brandRed,
+                  side: BorderSide(color: p.brandRed.withValues(alpha: 0.5)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
 
     return ListView.builder(
       itemCount: friends.length,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       itemBuilder: (context, index) {
-        final f = friends[index];
-        final bool selected = _selectedFriend?.id == f.id;
+        final friend = friends[index];
+        final bool isSelected = _selectedFriend?.id == friend.id;
 
-        return InkWell(
-          onTap: () => _selectFriend(f),
-          child: Container(
-            color: selected
-                ? const Color(0xFF0068FF).withValues(alpha: 0.1)
-                : Colors.transparent,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        return _buildContactTile(friend, p, isSelected: isSelected);
+      },
+    );
+  }
+
+  // Danh sách danh bạ bạn bè
+  Widget _buildContactsList(PtPalette p) {
+    List<Friend> friends = _chatService.friends;
+    if (_searchFilter.isNotEmpty) {
+      friends = friends.where((f) {
+        return f.name.toLowerCase().contains(_searchFilter) ||
+            f.username.toLowerCase().contains(_searchFilter) ||
+            f.phone.contains(_searchFilter);
+      }).toList();
+    }
+
+    if (friends.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(Icons.people_outline_rounded, size: 36, color: p.textSecondary),
+              const SizedBox(height: 10),
+              Text(
+                'Danh bạ trống',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: p.textPrimary),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Thêm bạn bằng Số điện thoại hoặc Tên đăng nhập.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: p.textSecondary),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      itemCount: friends.length,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      itemBuilder: (context, index) {
+        final friend = friends[index];
+        final bool isSelected = _selectedFriend?.id == friend.id;
+
+        return _buildContactTile(friend, p, isSelected: isSelected, isContactMode: true);
+      },
+    );
+  }
+
+  // Item danh thiếp bạn bè / hội thoại
+  Widget _buildContactTile(
+    Friend friend,
+    PtPalette p, {
+    required bool isSelected,
+    bool isContactMode = false,
+  }) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 2),
+      decoration: BoxDecoration(
+        color: isSelected ? p.chip : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _selectFriend(friend),
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
             child: Row(
               children: <Widget>[
-                _buildAvatar(f, 44),
+                _buildAvatar(friend, 44),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -472,178 +675,104 @@ class _ChatScreenState extends State<ChatScreen> {
                     children: <Widget>[
                       Row(
                         children: <Widget>[
-                          Expanded(
+                          Flexible(
                             child: Text(
-                              f.name,
+                              friend.name,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 13.5,
-                                fontWeight: f.unreadCount > 0
+                                fontWeight: friend.unreadCount > 0
                                     ? FontWeight.w800
                                     : FontWeight.w600,
                                 color: p.textPrimary,
                               ),
                             ),
                           ),
-                          Text(
-                            f.lastMessageTime,
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              color: f.unreadCount > 0
-                                  ? const Color(0xFF0068FF)
-                                  : p.textSecondary,
-                              fontWeight: f.unreadCount > 0
-                                  ? FontWeight.w700
-                                  : FontWeight.w400,
-                            ),
-                          ),
+                          if (_isSpecialAccount(friend.id)) ...<Widget>[
+                            const SizedBox(width: 6),
+                            _buildBadgeTag(friend.id, p),
+                          ],
                         ],
                       ),
                       const SizedBox(height: 3),
-                      Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: Text(
-                              f.lastMessage.isNotEmpty
-                                  ? f.lastMessage
-                                  : f.statusMessage,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: f.unreadCount > 0
-                                    ? p.textPrimary
-                                    : p.textSecondary,
-                                fontWeight: f.unreadCount > 0
-                                    ? FontWeight.w600
-                                    : FontWeight.w400,
-                              ),
-                            ),
-                          ),
-                          if (f.unreadCount > 0) ...<Widget>[
-                            const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: p.brandRed,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Text(
-                                '${f.unreadCount}',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
+                      Text(
+                        isContactMode
+                            ? (friend.statusMessage.isNotEmpty
+                                ? friend.statusMessage
+                                : '@${friend.username}')
+                            : (friend.lastMessage.isNotEmpty
+                                ? friend.lastMessage
+                                : 'Bắt đầu cuộc trò chuyện...'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: friend.unreadCount > 0
+                              ? p.textPrimary
+                              : p.textSecondary,
+                          fontWeight: friend.unreadCount > 0
+                              ? FontWeight.w600
+                              : FontWeight.w400,
+                        ),
                       ),
                     ],
                   ),
                 ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildContactsList(PtPalette p) {
-    final friends = _chatService.friends;
-
-    return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      children: <Widget>[
-        // Mục thêm bạn
-        ListTile(
-          leading: Container(
-            width: 40,
-            height: 40,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: Color(0xFF0068FF),
-            ),
-            child: const Icon(Icons.person_add_rounded, color: Colors.white),
-          ),
-          title: Text(
-            'Thêm bạn bè mới',
-            style: TextStyle(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w700,
-              color: p.textPrimary,
-            ),
-          ),
-          subtitle: Text(
-            'Tìm qua số điện thoại hoặc tên tài khoản',
-            style: TextStyle(fontSize: 11, color: p.textSecondary),
-          ),
-          onTap: _showAddFriend,
-        ),
-        const Divider(),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          child: Text(
-            'BẠN BÈ HIỆN TẠI (${friends.length})',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: p.textSecondary,
-            ),
-          ),
-        ),
-        for (final f in friends)
-          ListTile(
-            leading: _buildAvatar(f, 40),
-            title: Text(
-              f.name,
-              style: TextStyle(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w600,
-                color: p.textPrimary,
-              ),
-            ),
-            subtitle: Text(
-              'SĐT: ${f.phone} • ${f.statusMessage}',
-              style: TextStyle(fontSize: 11, color: p.textSecondary),
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                IconButton(
-                  icon: const Icon(Icons.phone_rounded, size: 20),
-                  color: const Color(0xFF0068FF),
-                  tooltip: 'Gọi thoại',
-                  onPressed: () {
-                    _selectFriend(f);
-                    _makeAudioCall();
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.chat_bubble_outline_rounded, size: 20),
-                  color: p.textSecondary,
-                  tooltip: 'Nhắn tin',
-                  onPressed: () => _selectFriend(f),
+                const SizedBox(width: 8),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: <Widget>[
+                    if (!isContactMode && friend.lastMessageTime.isNotEmpty)
+                      Text(
+                        friend.lastMessageTime,
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          color: friend.unreadCount > 0
+                              ? p.brandRed
+                              : p.textSecondary,
+                          fontWeight: friend.unreadCount > 0
+                              ? FontWeight.w700
+                              : FontWeight.w400,
+                        ),
+                      ),
+                    const SizedBox(height: 4),
+                    if (friend.unreadCount > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: p.brandRed,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          '${friend.unreadCount}',
+                          style: const TextStyle(
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),
           ),
-      ],
+        ),
+      ),
     );
   }
 
+  // Khung chat chi tiết
   Widget _buildChatArea(PtPalette p, Friend friend, {bool showHeader = true}) {
     final messages = _chatService.getMessages(friend.id);
 
     return Column(
       children: <Widget>[
-        // Header khung chat chi tiết (Desktop)
+        // Header trên desktop
         if (showHeader)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -653,59 +782,62 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             child: Row(
               children: <Widget>[
-                _buildAvatar(friend, 42),
+                _buildAvatar(friend, 40),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      Text(
-                        friend.name,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: p.textPrimary,
-                        ),
+                      Row(
+                        children: <Widget>[
+                          Text(
+                            friend.name,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: p.textPrimary,
+                            ),
+                          ),
+                          if (_isSpecialAccount(friend.id)) ...<Widget>[
+                            const SizedBox(width: 6),
+                            _buildBadgeTag(friend.id, p),
+                          ],
+                        ],
                       ),
-                      Text(
-                        'SĐT: ${friend.phone} • ${friend.statusMessage}',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Color(0xFF00C853),
-                          fontWeight: FontWeight.w600,
-                        ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: <Widget>[
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF00E676),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            friend.isOnline ? 'Đang hoạt động' : 'Offline',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF00E676),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
-                ElevatedButton.icon(
+                IconButton(
                   onPressed: _makeAudioCall,
-                  icon: const Icon(Icons.phone_in_talk_rounded, size: 16),
-                  label: const Text('Gọi thoại', style: TextStyle(fontSize: 12)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0068FF),
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                  ),
+                  icon: Icon(Icons.phone_outlined, color: p.textPrimary, size: 21),
+                  tooltip: 'Gọi thoại',
                 ),
-                const SizedBox(width: 8),
-                ElevatedButton.icon(
+                IconButton(
                   onPressed: _makeVideoCall,
-                  icon: const Icon(Icons.videocam_rounded, size: 16),
-                  label: const Text('Gọi video', style: TextStyle(fontSize: 12)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0049B7),
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                  ),
+                  icon: Icon(Icons.videocam_outlined, color: p.textPrimary, size: 23),
+                  tooltip: 'Gọi video',
                 ),
               ],
             ),
@@ -713,49 +845,43 @@ class _ChatScreenState extends State<ChatScreen> {
 
         // Danh sách tin nhắn
         Expanded(
-          child: Container(
-            color: p.bg,
-            child: messages.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        _buildAvatar(friend, 64),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Bắt đầu cuộc trò chuyện với ${friend.name}',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: p.textPrimary,
-                          ),
+          child: messages.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      _buildAvatar(friend, 64),
+                      const SizedBox(height: 12),
+                      Text(
+                        friend.name,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: p.textPrimary,
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Hai bạn đã là bạn bè trên TIKTUBE & ZaloChat!',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: p.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(16),
-                    itemCount: messages.length,
-                    itemBuilder: (context, index) {
-                      final msg = messages[index];
-                      return _buildMessageBubble(msg, p);
-                    },
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Hãy gửi lời chào để bắt đầu kết nối!',
+                        style: TextStyle(fontSize: 12.5, color: p.textSecondary),
+                      ),
+                    ],
                   ),
-          ),
+                )
+              : ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  itemCount: messages.length,
+                  itemBuilder: (context, index) {
+                    final msg = messages[index];
+                    return _buildMessageBubble(msg, p);
+                  },
+                ),
         ),
 
         // Thanh nhập tin nhắn
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
             color: p.surface,
             border: Border(top: BorderSide(color: p.border)),
@@ -764,60 +890,56 @@ class _ChatScreenState extends State<ChatScreen> {
             top: false,
             child: Row(
               children: <Widget>[
-                IconButton(
-                  onPressed: () {
-                    _textController.text += ' 👍';
-                  },
-                  icon: const Icon(
-                    Icons.thumb_up_alt_outlined,
-                    size: 20,
-                    color: Color(0xFF0068FF),
-                  ),
-                  tooltip: 'Gửi like',
-                ),
                 Expanded(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
                     decoration: BoxDecoration(
                       color: p.surfaceAlt,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(999),
                       border: Border.all(color: p.border),
                     ),
                     child: TextField(
                       controller: _textController,
-                      onSubmitted: (_) => _sendMessage(),
-                      style: TextStyle(fontSize: 13, color: p.textPrimary),
+                      onSubmitted: (_) => unawaited(_sendMessage()),
+                      textInputAction: TextInputAction.send,
+                      cursorColor: p.brandRed,
+                      style: TextStyle(fontSize: 13.5, color: p.textPrimary),
                       decoration: InputDecoration(
-                        hintText: 'Nhập tin nhắn tới ${friend.name}...',
+                        hintText: 'Nhập tin nhắn với ${friend.name}...',
                         hintStyle: TextStyle(
-                          fontSize: 12.5,
+                          fontSize: 13,
                           color: p.textSecondary.withValues(alpha: 0.8),
                         ),
                         border: InputBorder.none,
                         isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(
-                          vertical: 10,
-                        ),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 11),
                       ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF0068FF),
-                    shape: BoxShape.circle,
-                  ),
-                  child: IconButton(
-                    onPressed: _sendMessage,
-                    icon: const Icon(
+                InkWell(
+                  onTap: _sendMessage,
+                  borderRadius: BorderRadius.circular(999),
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(colors: p.ctaGradient),
+                      boxShadow: <BoxShadow>[
+                        BoxShadow(
+                          color: p.brandRed.withValues(alpha: 0.28),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
                       Icons.send_rounded,
                       color: Colors.white,
                       size: 18,
                     ),
-                    tooltip: 'Gửi tin nhắn',
                   ),
                 ),
               ],
@@ -828,31 +950,32 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  // Bong bóng tin nhắn
   Widget _buildMessageBubble(ChatMessage msg, PtPalette p) {
     if (msg.isCall) {
       return Container(
         margin: const EdgeInsets.symmetric(vertical: 8),
         alignment: Alignment.center,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
           decoration: BoxDecoration(
             color: p.surfaceAlt,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(999),
             border: Border.all(color: p.border),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              const Icon(
+              Icon(
                 Icons.phone_forwarded_rounded,
-                size: 16,
-                color: Color(0xFF0068FF),
+                size: 14,
+                color: p.brandRed,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Text(
                 '${msg.text} • ${msg.time}',
                 style: TextStyle(
-                  fontSize: 11.5,
+                  fontSize: 11,
                   fontWeight: FontWeight.w600,
                   color: p.textPrimary,
                 ),
@@ -872,21 +995,24 @@ class _ChatScreenState extends State<ChatScreen> {
         constraints: const BoxConstraints(maxWidth: 380),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: isMe ? const Color(0xFF0068FF) : p.surface,
+          color: isMe ? null : p.surfaceAlt,
+          gradient: isMe ? LinearGradient(colors: p.ctaGradient) : null,
           borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(14),
-            topRight: const Radius.circular(14),
-            bottomLeft: Radius.circular(isMe ? 14 : 2),
-            bottomRight: Radius.circular(isMe ? 2 : 14),
+            topLeft: const Radius.circular(16),
+            topRight: const Radius.circular(16),
+            bottomLeft: Radius.circular(isMe ? 16 : 4),
+            bottomRight: Radius.circular(isMe ? 4 : 16),
           ),
           border: isMe ? null : Border.all(color: p.border),
-          boxShadow: <BoxShadow>[
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
+          boxShadow: isMe
+              ? <BoxShadow>[
+                  BoxShadow(
+                    color: p.brandRed.withValues(alpha: 0.22),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
         ),
         child: Column(
           crossAxisAlignment:
@@ -905,7 +1031,7 @@ class _ChatScreenState extends State<ChatScreen> {
               msg.time,
               style: TextStyle(
                 fontSize: 9.5,
-                color: isMe ? Colors.white70 : p.textSecondary,
+                color: isMe ? Colors.white.withValues(alpha: 0.8) : p.textSecondary,
               ),
             ),
           ],
@@ -914,6 +1040,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  // Placeholder khi chưa chọn cuộc trò chuyện trên desktop
   Widget _buildEmptyChatPlaceholder(PtPalette p) {
     return Center(
       child: Column(
@@ -924,12 +1051,12 @@ class _ChatScreenState extends State<ChatScreen> {
             height: 72,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: const Color(0xFF0068FF).withValues(alpha: 0.1),
+              color: p.chip,
             ),
-            child: const Icon(
-              Icons.chat_bubble_outline_rounded,
-              color: Color(0xFF0068FF),
-              size: 36,
+            child: Icon(
+              Icons.forum_outlined,
+              color: p.brandRed,
+              size: 34,
             ),
           ),
           const SizedBox(height: 16),
@@ -943,7 +1070,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            'Kết nối, nhắn tin và gọi điện với bạn bè qua ZaloChat PTK.',
+            'Kết nối, nhắn tin và gọi điện với bạn bè trên TIKTUBE.',
             style: TextStyle(fontSize: 12, color: p.textSecondary),
           ),
         ],
@@ -951,17 +1078,25 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  // Avatar người dùng với gradient nghệ thuật & chấm online
   Widget _buildAvatar(Friend friend, double size) {
+    final gradient = _gradientFor(friend.name);
+
     return Stack(
       children: <Widget>[
         Container(
           width: size,
           height: size,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             shape: BoxShape.circle,
-            gradient: LinearGradient(
-              colors: [Color(0xFF0068FF), Color(0xFF0049B7)],
-            ),
+            gradient: LinearGradient(colors: gradient),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: gradient[0].withValues(alpha: 0.24),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           alignment: Alignment.center,
           child: Text(
@@ -981,7 +1116,7 @@ class _ChatScreenState extends State<ChatScreen> {
               width: size * 0.28,
               height: size * 0.28,
               decoration: BoxDecoration(
-                color: const Color(0xFF00C853),
+                color: const Color(0xFF00E676),
                 shape: BoxShape.circle,
                 border: Border.all(color: Colors.white, width: 1.8),
               ),
@@ -990,5 +1125,29 @@ class _ChatScreenState extends State<ChatScreen> {
       ],
     );
   }
-}
 
+  bool _isSpecialAccount(String id) {
+    return id == 'ptk_admin' || id == 'nhantin_ptk';
+  }
+
+  Widget _buildBadgeTag(String id, PtPalette p) {
+    final isOfficial = id == 'ptk_admin';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+      decoration: BoxDecoration(
+        color: p.brandRed.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: p.brandRed.withValues(alpha: 0.25)),
+      ),
+      child: Text(
+        isOfficial ? 'OFFICIAL' : 'AI',
+        style: TextStyle(
+          fontSize: 8.5,
+          fontWeight: FontWeight.w800,
+          color: p.brandRed,
+          letterSpacing: 0.3,
+        ),
+      ),
+    );
+  }
+}

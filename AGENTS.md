@@ -71,6 +71,7 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
 - **Phân vùng dữ liệu:** Thống kê hiển thị riêng biệt theo từng tài khoản đăng nhập (lượt xem, lượt like, bình luận, người đăng ký của chính tài khoản đó), không cộng dồn chung toàn bộ hệ thống.
 
 ### 3.6. Nhắn tin, Kết bạn & Gọi thoại / Video (ZaloChat PTK - nhantinptk.onrender.com)
+- **Thiết kế giao diện:** Hoàn toàn đồng bộ với ngôn ngữ điện ảnh TIKTUBE (dùng `context.palette`, tông màu đỏ thương hiệu `p.brandRed`/`p.ctaGradient`, surface cards mờ, gradient avatars nghệ thuật, tab capsule hiện đại). Không dùng màu xanh thô.
 - **Kết bạn & Tìm kiếm:** Hộp thoại tìm bạn theo Số điện thoại hoặc Tên đăng nhập (username), hiển thị thông tin thẻ người dùng, gửi/chấp nhận lời mời kết bạn.
 - **Trò chuyện trực tiếp (Chat):** Danh bạ bạn bè, cửa sổ chat thời gian thực, bong bóng tin nhắn gửi/nhận, lưu trữ bền vững với SharedPreferences, mô phỏng phản hồi tự động thông minh.
 - **Gọi thoại (Audio Call 📞) & Gọi Video (Video Call 📹):**

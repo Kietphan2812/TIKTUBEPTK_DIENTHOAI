@@ -180,7 +180,7 @@ class _CallOverlayState extends State<CallOverlay>
                             height: 130 * _pulseAnimation.value,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: const Color(0xFF0068FF).withValues(
+                              color: const Color(0xFFFF2D45).withValues(
                                 alpha: (1.3 - _pulseAnimation.value).clamp(0.0, 0.5),
                               ),
                             ),
@@ -192,7 +192,7 @@ class _CallOverlayState extends State<CallOverlay>
                               shape: BoxShape.circle,
                               border: Border.all(color: Colors.white, width: 3),
                               gradient: const LinearGradient(
-                                colors: [Color(0xFF0068FF), Color(0xFF0049B7)],
+                                colors: [Color(0xFFFF2D45), Color(0xFFD10E28)],
                               ),
                             ),
                             alignment: Alignment.center,

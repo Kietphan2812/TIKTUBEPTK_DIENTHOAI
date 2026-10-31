@@ -42,6 +42,20 @@ class ChatService extends ChangeNotifier {
           ..addAll(
             list.map((e) => Friend.fromJson(e as Map<String, dynamic>)),
           );
+        for (int i = 0; i < _friends.length; i++) {
+          final f = _friends[i];
+          if (f.id == 'ptk_admin' && (f.name.contains('ZaloChat') || f.name.contains('PTK Official'))) {
+            _friends[i] = f.copyWith(
+              name: 'TIKTUBE Official',
+              statusMessage: 'Kênh hỗ trợ chính thức TIKTUBE',
+            );
+          } else if (f.id == 'nhantin_ptk' && f.name.contains('ZaloChat')) {
+            _friends[i] = f.copyWith(
+              name: 'Trợ lý AI TIKTUBE',
+              statusMessage: 'Trợ lý AI hỗ trợ & hỏi đáp 24/7',
+            );
+          }
+        }
       } else {
         _seedDefaultFriends();
       }
@@ -87,13 +101,13 @@ class ChatService extends ChangeNotifier {
       ..addAll(<Friend>[
         const Friend(
           id: 'ptk_admin',
-          name: 'PTK Official (ZaloChat)',
+          name: 'TIKTUBE Official',
           username: 'ptk_admin',
           phone: '0901234567',
           avatar: '',
           isOnline: true,
-          statusMessage: 'Kênh hỗ trợ chính thức TIKTUBE & ZaloChat',
-          lastMessage: 'Chào bạn! Bạn cần hỗ trợ gì về video hoặc nhắn tin không?',
+          statusMessage: 'Kênh hỗ trợ chính thức TIKTUBE',
+          lastMessage: 'Chào bạn! Bạn cần hỗ trợ gì về video hoặc kết nối không?',
           lastMessageTime: '08:30',
           unreadCount: 1,
         ),
@@ -104,19 +118,19 @@ class ChatService extends ChangeNotifier {
           phone: '0988888888',
           avatar: '',
           isOnline: true,
-          statusMessage: 'Đang online TIKTUBE',
+          statusMessage: 'Sáng tạo nội dung video TIKTUBE',
           lastMessage: 'Video mới đăng chất lượng lắm bạn ơi!',
           lastMessageTime: 'Hôm qua',
           unreadCount: 0,
         ),
         const Friend(
           id: 'nhantin_ptk',
-          name: 'ZaloChat PTK Assistant',
+          name: 'Trợ lý AI TIKTUBE',
           username: 'nhantinptk',
           phone: '0911223344',
           avatar: '',
           isOnline: true,
-          statusMessage: 'Đồng bộ cuộc gọi & tin nhắn nhantinptk.onrender.com',
+          statusMessage: 'Trợ lý AI hỗ trợ & hỏi đáp 24/7',
           lastMessage: 'Hệ thống gọi điện thoại và nhắn tin đã sẵn sàng 24/7.',
           lastMessageTime: '10:15',
           unreadCount: 0,

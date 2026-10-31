@@ -64,9 +64,9 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
               // Header
               Row(
                 children: <Widget>[
-                  const Icon(
+                  Icon(
                     Icons.person_add_alt_1_rounded,
-                    color: Color(0xFF0068FF),
+                    color: p.brandRed,
                     size: 24,
                   ),
                   const SizedBox(width: 10),
@@ -125,7 +125,7 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
                   ElevatedButton(
                     onPressed: _search,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0068FF),
+                      backgroundColor: p.brandRed,
                       foregroundColor: Colors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
@@ -215,10 +215,10 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
           Container(
             width: 42,
             height: 42,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               shape: BoxShape.circle,
               gradient: LinearGradient(
-                colors: [Color(0xFF0068FF), Color(0xFF0049B7)],
+                colors: p.ctaGradient,
               ),
             ),
             alignment: Alignment.center,
@@ -281,7 +281,7 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
               icon: const Icon(Icons.person_add_rounded, size: 16),
               label: const Text('Kết bạn', style: TextStyle(fontSize: 12)),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0068FF),
+                backgroundColor: p.brandRed,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 shape: RoundedRectangleBorder(
@@ -308,9 +308,9 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
           Container(
             width: 38,
             height: 38,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Color(0xFF0068FF),
+              color: p.brandRed,
             ),
             alignment: Alignment.center,
             child: Text(
@@ -364,7 +364,7 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
               );
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0068FF),
+              backgroundColor: p.brandRed,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             ),
