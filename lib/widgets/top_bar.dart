@@ -35,10 +35,10 @@ class TopBar extends StatelessWidget {
         builder: (BuildContext context, BoxConstraints constraints) {
           final width = constraints.maxWidth;
           final bool isMobile = width < 700;
-          final showSearch = width >= 700;
-          final showCta = width >= 800;
-          final showSecondaryNav = width >= 1080;
-          final showPrimaryNav = width >= 960;
+          final showSearch = width >= 780;
+          final showCta = width >= 950;
+          final showSecondaryNav = width >= 1150;
+          final showPrimaryNav = width >= 980;
           final showLogoText = width >= 340;
 
           return SizedBox(
@@ -84,6 +84,12 @@ class TopBar extends StatelessWidget {
                     badgeCount: unreadNotifications,
                     onTap: () => onAction('Thông báo'),
                   ),
+                  if (!isMobile)
+                    _IconButton(
+                      icon: Icons.chat_bubble_outline_rounded,
+                      tooltip: 'Nhắn tin & Bạn bè',
+                      onTap: () => onAction('Nhắn tin'),
+                    ),
                   if (showPrimaryNav)
                     _NavItem(
                       label: 'Trang chủ',
@@ -138,57 +144,65 @@ class _SearchField extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
 
-    return Row(
-      children: <Widget>[
-        Expanded(
-          child: Container(
-            height: 36,
-            decoration: BoxDecoration(
-              color: p.surfaceAlt,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: p.border),
-            ),
-            child: TextField(
-              controller: controller,
-              onChanged: onChanged,
-              onSubmitted: onChanged,
-              textInputAction: TextInputAction.search,
-              cursorColor: p.brandRed,
-              style: TextStyle(fontSize: 13, color: p.textPrimary),
-              decoration: InputDecoration(
-                isDense: true,
-                hintText: 'Tìm bằng tiêu đề, #tag...',
-                hintStyle: TextStyle(
-                  fontSize: 13,
-                  color: p.textSecondary.withValues(alpha: 0.9),
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final bool showSearchBtn = constraints.maxWidth >= 180;
+
+        return Row(
+          children: <Widget>[
+            Expanded(
+              child: Container(
+                height: 36,
+                decoration: BoxDecoration(
+                  color: p.surfaceAlt,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: p.border),
                 ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 9,
+                child: TextField(
+                  controller: controller,
+                  onChanged: onChanged,
+                  onSubmitted: onChanged,
+                  textInputAction: TextInputAction.search,
+                  cursorColor: p.brandRed,
+                  style: TextStyle(fontSize: 13, color: p.textPrimary),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: 'Tìm bằng tiêu đề, #tag...',
+                    hintStyle: TextStyle(
+                      fontSize: 13,
+                      color: p.textSecondary.withValues(alpha: 0.9),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 9,
+                    ),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                  ),
                 ),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
               ),
             ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        _HoverSurface(
-          onTap: () => onChanged(controller.text),
-          borderRadius: BorderRadius.circular(8),
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          height: 36,
-          child: Text(
-            'Tìm',
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              color: p.textPrimary,
-            ),
-          ),
-        ),
-      ],
+            if (showSearchBtn) ...<Widget>[
+              const SizedBox(width: 8),
+              _HoverSurface(
+                onTap: () => onChanged(controller.text),
+                borderRadius: BorderRadius.circular(8),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                height: 36,
+                child: Text(
+                  'Tìm',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: p.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 }
@@ -434,3 +448,4 @@ class _HoverSurfaceState extends State<_HoverSurface> {
     );
   }
 }
+

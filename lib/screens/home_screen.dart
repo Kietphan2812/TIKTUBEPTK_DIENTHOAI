@@ -17,6 +17,7 @@ import '../widgets/top_bar.dart';
 import '../widgets/trending_card.dart';
 import '../widgets/video_card.dart';
 import 'account_screen.dart';
+import 'chat_screen.dart';
 import 'history_screen.dart';
 import 'notifications_screen.dart';
 import 'quick_watch_screen.dart';
@@ -377,6 +378,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return;
       case 'Đăng Video':
         unawaited(_openUpload());
+        return;
+      case 'Nhắn tin':
+        _push(const ChatScreen());
         return;
       case 'Lịch sử':
         _push(HistoryScreen(api: _api));
@@ -1008,6 +1012,11 @@ class _MobileBottomNav extends StatelessWidget {
                   onTap: () => onTap('Xem video'),
                 ),
                 _MobileUploadButton(onTap: () => onTap('Đăng Video')),
+                _MobileNavButton(
+                  icon: Icons.chat_bubble_outline_rounded,
+                  label: 'Nhắn tin',
+                  onTap: () => onTap('Nhắn tin'),
+                ),
                 _MobileNavButton(
                   icon: Icons.subscriptions_outlined,
                   label: 'Đăng ký',

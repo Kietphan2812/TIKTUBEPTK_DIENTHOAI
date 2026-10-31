@@ -70,6 +70,18 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
 - **Lọc thời gian:** Hỗ trợ xem chi tiết theo ngày, 7 ngày, toàn tháng (30 ngày).
 - **Phân vùng dữ liệu:** Thống kê hiển thị riêng biệt theo từng tài khoản đăng nhập (lượt xem, lượt like, bình luận, người đăng ký của chính tài khoản đó), không cộng dồn chung toàn bộ hệ thống.
 
+### 3.6. Nhắn tin, Kết bạn & Gọi thoại / Video (ZaloChat PTK - nhantinptk.onrender.com)
+- **Kết bạn & Tìm kiếm:** Hộp thoại tìm bạn theo Số điện thoại hoặc Tên đăng nhập (username), hiển thị thông tin thẻ người dùng, gửi/chấp nhận lời mời kết bạn.
+- **Trò chuyện trực tiếp (Chat):** Danh bạ bạn bè, cửa sổ chat thời gian thực, bong bóng tin nhắn gửi/nhận, lưu trữ bền vững với SharedPreferences, mô phỏng phản hồi tự động thông minh.
+- **Gọi thoại (Audio Call 📞) & Gọi Video (Video Call 📹):**
+  - Giao diện cuộc gọi hiện đại với hiệu ứng sóng âm avatar lan toả (Avatar Pulse Ring).
+  - Đồng hồ đếm thời lượng cuộc gọi.
+  - Bộ nút điều khiển: bật/tắt mic, camera, chuyển loa ngoài và nút gác máy đỏ 🔴.
+  - Hộp thoại nhận cuộc gọi đến với 2 nút Trả lời 🟢 và Từ chối 🔴.
+- **Điểm truy cập:** Nút Nhắn tin trên TopBar (Desktop/Tablet), thanh điều hướng đáy _MobileBottomNav (Mobile), và cụm nút hành động trên WatchScreen.
+
+---
+
 ### 3.5. Quy chuẩn về cài đặt iOS (.ipa)
 - Định dạng `.apk` chỉ cài được trên Android.
 - Định dạng `.ipa` của iOS KHÔNG thể tạo bằng cách đổi tên tệp hay chỉnh sửa file thủ công; bắt buộc phải build trên macOS có Xcode và có chứng chỉ/tài khoản Apple Developer (hoặc dịch vụ CI/CD macOS như GitHub Actions / Codemagic).

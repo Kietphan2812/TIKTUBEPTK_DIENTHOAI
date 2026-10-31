@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'chat_screen.dart';
 
 import '../auth/auth_scope.dart';
 import '../data/tiktube_api.dart';
@@ -960,6 +961,18 @@ class _YouTubeActionBar extends StatelessWidget {
             icon: Icons.auto_awesome,
             label: 'Đặt câu hỏi',
             onTap: () => onNotify('Trợ lý AI TIKTUBE đã sẵn sàng hỗ trợ.'),
+          ),
+          const SizedBox(width: 8),
+          _YouTubePillButton(
+            icon: Icons.chat_bubble_outline_rounded,
+            label: 'Nhắn tin',
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const ChatScreen(),
+                ),
+              );
+            },
           ),
           const SizedBox(width: 8),
           _YouTubePillButton(
