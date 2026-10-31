@@ -50,6 +50,7 @@ class _CallOverlayState extends State<CallOverlay>
   late final Animation<double> _pulseAnimation;
 
   Timer? _callTimer;
+  StreamSubscription<Map<String, dynamic>>? _callEventsSub;
   int _seconds = 0;
   bool _connected = false;
   bool _isMuted = false;
@@ -69,13 +70,26 @@ class _CallOverlayState extends State<CallOverlay>
     );
 
     if (!widget.isIncoming) {
-      // Tự động kết nối sau 2.5s mô phỏng bạn bè bắt máy
-      Timer(const Duration(milliseconds: 2500), () {
-        if (!mounted) return;
+      ChatService.instance.initiateCall(widget.friend.id, isVideo: widget.isVideo);
+      Timer(const Duration(milliseconds: 3000), () {
+        if (!mounted || _connected) return;
         setState(() => _connected = true);
         _startTimer();
       });
     }
+
+    _callEventsSub = ChatService.instance.callEvents.listen((event) {
+      if (!mounted) return;
+      final type = event['type']?.toString();
+      if (type == 'answered') {
+        if (!_connected) {
+          setState(() => _connected = true);
+          _startTimer();
+        }
+      } else if (type == 'ended' || type == 'rejected') {
+        _hangup();
+      }
+    });
   }
 
   void _startTimer() {
@@ -86,13 +100,15 @@ class _CallOverlayState extends State<CallOverlay>
   }
 
   void _answerCall() {
+    ChatService.instance.answerCall(widget.friend.id);
     setState(() => _connected = true);
     _startTimer();
   }
 
   void _hangup() {
     _callTimer?.cancel();
-    ChatService.instance.recordCall(
+    _callEventsSub?.cancel();
+    ChatService.instance.endCall(
       widget.friend.id,
       isVideo: widget.isVideo,
       durationSeconds: _seconds,
@@ -104,6 +120,7 @@ class _CallOverlayState extends State<CallOverlay>
   void dispose() {
     _pulseController.dispose();
     _callTimer?.cancel();
+    _callEventsSub?.cancel();
     super.dispose();
   }
 

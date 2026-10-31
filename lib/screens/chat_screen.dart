@@ -6,6 +6,7 @@ import '../models/chat_contact.dart';
 import '../theme/app_theme.dart';
 import '../widgets/add_friend_dialog.dart';
 import '../widgets/call_overlay.dart';
+import 'package:file_picker/file_picker.dart';
 import '../widgets/section_top_bar.dart';
 
 /// Bảng dải màu nghệ thuật cho Avatar người dùng
@@ -42,12 +43,44 @@ class _ChatScreenState extends State<ChatScreen> {
   Friend? _selectedFriend;
   int _activeTab = 0; // 0: Tin nhắn, 1: Bạn bè
   String _searchFilter = '';
+  StreamSubscription<Map<String, dynamic>>? _callSub;
+  bool _isUploadingImage = false;
 
   @override
   void initState() {
     super.initState();
     unawaited(_chatService.init());
     _chatService.addListener(_onServiceChanged);
+
+    _callSub = _chatService.callEvents.listen((event) {
+      if (!mounted) return;
+      final type = event['type']?.toString();
+      if (type == 'incoming') {
+        final data = event['data'] as Map<String, dynamic>? ?? {};
+        final caller = data['caller'] as Map<String, dynamic>? ?? {};
+        final callerId = caller['id']?.toString() ?? '';
+        final callerName = caller['name']?.toString() ?? 'Bạn bè';
+        final isVideo = data['isVideo'] as bool? ?? false;
+
+        final friend = _chatService.friends.firstWhere(
+          (f) => f.id == callerId,
+          orElse: () => Friend(
+            id: callerId,
+            name: callerName,
+            username: caller['username']?.toString() ?? callerId,
+            phone: caller['phone']?.toString() ?? '',
+            avatar: caller['avatar']?.toString() ?? '',
+          ),
+        );
+
+        CallOverlay.startCall(
+          context,
+          friend: friend,
+          isVideo: isVideo,
+          isIncoming: true,
+        );
+      }
+    });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -83,6 +116,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _callSub?.cancel();
     _chatService.removeListener(_onServiceChanged);
     _textController.dispose();
     _searchController.dispose();
@@ -93,6 +127,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void _selectFriend(Friend friend) {
     setState(() => _selectedFriend = friend);
     _chatService.markAsRead(friend.id);
+    _chatService.loadChatHistory(friend.id);
     _scrollToBottom();
   }
 
@@ -115,6 +150,142 @@ class _ChatScreenState extends State<ChatScreen> {
     _textController.clear();
     await _chatService.sendMessage(_selectedFriend!.id, text);
     _scrollToBottom();
+  }
+
+
+  Future<void> _pickAndSendImage() async {
+    if (_selectedFriend == null || _isUploadingImage) return;
+
+    try {
+      final res = await FilePicker.pickFile(type: FileType.image);
+      if (res == null) return;
+      final bytes = await res.readAsBytes();
+      if (bytes.isEmpty) return;
+
+      setState(() => _isUploadingImage = true);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đang tải ảnh lên Cloudinary & lưu Neon SQL...'),
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+
+      final url = await _chatService.uploadImage(bytes, res.name);
+      if (url != null && url.isNotEmpty) {
+        await _chatService.sendMessage(_selectedFriend!.id, '', imageUrl: url);
+        _scrollToBottom();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi tải ảnh: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isUploadingImage = false);
+    }
+  }
+
+  void _showAccountSwitcher() {
+    final p = context.palette;
+    final allUsers = _chatService.allUsers;
+    final current = _chatService.currentUser;
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: p.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Icon(Icons.switch_account_rounded, color: p.brandRed, size: 24),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Đổi tài khoản nhắn tin',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: p.textPrimary,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: Icon(Icons.close_rounded, color: p.textSecondary),
+                      onPressed: () => Navigator.of(ctx).pop(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Chọn tài khoản người dùng từ cơ sở dữ liệu Neon PostgreSQL:',
+                  style: TextStyle(fontSize: 12.5, color: p.textSecondary),
+                ),
+                const SizedBox(height: 12),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: allUsers.length,
+                    itemBuilder: (context, idx) {
+                      final u = allUsers[idx];
+                      final bool isSelected = current?.id == u.id;
+                      return Container(
+                        margin: const EdgeInsets.symmetric(vertical: 4),
+                        decoration: BoxDecoration(
+                          color: isSelected ? p.chip : p.surfaceAlt,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isSelected ? p.brandRed : p.border,
+                            width: isSelected ? 1.5 : 1,
+                          ),
+                        ),
+                        child: ListTile(
+                          onTap: () {
+                            _chatService.switchCurrentUser(u);
+                            Navigator.of(ctx).pop();
+                          },
+                          leading: _buildAvatar(u, 40),
+                          title: Text(
+                            u.name,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                              color: p.textPrimary,
+                            ),
+                          ),
+                          subtitle: Text(
+                            'SĐT: ${u.phone} • @${u.username}',
+                            style: TextStyle(fontSize: 11.5, color: p.textSecondary),
+                          ),
+                          trailing: isSelected
+                              ? Icon(Icons.check_circle_rounded, color: p.brandRed, size: 22)
+                              : null,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _showAddFriend() {
@@ -158,8 +329,103 @@ class _ChatScreenState extends State<ChatScreen> {
             title: 'Tin nhắn & Bạn bè',
             onBack: () => Navigator.of(context).pop(),
           ),
+          _buildNeonStatusBanner(p),
           Expanded(
             child: wide ? _buildWideLayout(p) : _buildMobileLayout(p),
+          ),
+        ],
+      ),
+    );
+  }
+
+
+  Widget _buildNeonStatusBanner(PtPalette p) {
+    final isOnline = _chatService.isConnected;
+    final user = _chatService.currentUser;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+      decoration: BoxDecoration(
+        color: p.surface,
+        border: Border(bottom: BorderSide(color: p.border)),
+      ),
+      child: Row(
+        children: <Widget>[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: isOnline
+                  ? const Color(0xFF00E676).withValues(alpha: 0.12)
+                  : const Color(0xFFFF9100).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: isOnline
+                    ? const Color(0xFF00E676).withValues(alpha: 0.4)
+                    : const Color(0xFFFF9100).withValues(alpha: 0.4),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: isOnline ? const Color(0xFF00E676) : const Color(0xFFFF9100),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  isOnline ? 'Neon SQL Online' : 'Đang kết nối SQL...',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: isOnline ? const Color(0xFF00C853) : const Color(0xFFFF9100),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              user != null ? '${user.name} (${user.phone})' : 'Đang tải tài khoản...',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: p.textPrimary,
+              ),
+            ),
+          ),
+          InkWell(
+            onTap: _showAccountSwitcher,
+            borderRadius: BorderRadius.circular(999),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: p.surfaceAlt,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: p.border),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(Icons.swap_horiz_rounded, size: 14, color: p.brandRed),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Đổi nick',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: p.brandRed,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -890,6 +1156,21 @@ class _ChatScreenState extends State<ChatScreen> {
             top: false,
             child: Row(
               children: <Widget>[
+                IconButton(
+                  onPressed: _pickAndSendImage,
+                  icon: _isUploadingImage
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(
+                          Icons.image_outlined,
+                          color: p.brandRed,
+                          size: 22,
+                        ),
+                  tooltip: 'Gửi ảnh (Cloudinary)',
+                ),
                 Expanded(
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -1018,14 +1299,41 @@ class _ChatScreenState extends State<ChatScreen> {
           crossAxisAlignment:
               isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: <Widget>[
-            Text(
-              msg.text,
-              style: TextStyle(
-                fontSize: 13,
-                color: isMe ? Colors.white : p.textPrimary,
-                height: 1.35,
+            if (msg.imageUrl != null && msg.imageUrl!.isNotEmpty) ...<Widget>[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.network(
+                  msg.imageUrl!,
+                  width: 220,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (ctx, child, progress) {
+                    if (progress == null) return child;
+                    return Container(
+                      width: 220,
+                      height: 140,
+                      color: Colors.black12,
+                      alignment: Alignment.center,
+                      child: const CircularProgressIndicator(strokeWidth: 2),
+                    );
+                  },
+                  errorBuilder: (ctx, err, stack) => const Icon(
+                    Icons.broken_image_rounded,
+                    color: Colors.white70,
+                    size: 40,
+                  ),
+                ),
               ),
-            ),
+              if (msg.text.isNotEmpty) const SizedBox(height: 6),
+            ],
+            if (msg.text.isNotEmpty)
+              Text(
+                msg.text,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isMe ? Colors.white : p.textPrimary,
+                  height: 1.35,
+                ),
+              ),
             const SizedBox(height: 3),
             Text(
               msg.time,

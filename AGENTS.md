@@ -70,8 +70,17 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
 - **Lọc thời gian:** Hỗ trợ xem chi tiết theo ngày, 7 ngày, toàn tháng (30 ngày).
 - **Phân vùng dữ liệu:** Thống kê hiển thị riêng biệt theo từng tài khoản đăng nhập (lượt xem, lượt like, bình luận, người đăng ký của chính tài khoản đó), không cộng dồn chung toàn bộ hệ thống.
 
-### 3.6. Nhắn tin, Kết bạn & Gọi thoại / Video (ZaloChat PTK - nhantinptk.onrender.com)
-- **Thiết kế giao diện:** Hoàn toàn đồng bộ với ngôn ngữ điện ảnh TIKTUBE (dùng `context.palette`, tông màu đỏ thương hiệu `p.brandRed`/`p.ctaGradient`, surface cards mờ, gradient avatars nghệ thuật, tab capsule hiện đại). Không dùng màu xanh thô.
+### 3.6. Nhắn tin, Kết bạn & Gọi thoại / Video (Đồng bộ Neon PostgreSQL & nhantinptk.onrender.com)
+- **Kiến trúc & Cơ sở dữ liệu:**
+  - Kết nối trực tiếp máy chủ thời gian thực `https://nhantinptk.onrender.com` qua `socket_io_client`.
+  - Cơ sở dữ liệu Neon PostgreSQL (`sql_nhantin` - `ep-withered-meadow-b5o6uv6v.c-7.us-east-2.aws.neon.tech/neondb`): lưu trữ vĩnh viễn danh sách người dùng (`users`), tin nhắn (`messages`), lời mời kết bạn (`friend_requests`).
+  - Lưu trữ đám mây hình ảnh: Cloudinary tài khoản `qfgja134` (API Secret `WR2xJMwT27mWJjfIjwoAqMbuF8M`), gửi ảnh trực tiếp qua endpoint `/api/upload`.
+  - Đồng bộ 2 chiều thời gian thực với web app `https://nhantinptk.onrender.com`.
+- **Giao diện & Tính năng:**
+  - Huy hiệu trạng thái thời gian thực: `🟢 Neon SQL Online` / `🟠 Đang kết nối SQL...`.
+  - Hỗ trợ đổi tài khoản linh hoạt giữa các tài khoản người dùng Neon (`Phantaanskieetj`, `ptk`, `Nguyễn Thế Nhất`, `nhung2050`, `Xuân Nghi`).
+  - Gửi hình ảnh qua Cloudinary hiển thị mượt mà trong bong bóng chat.
+  - Tín hiệu cuộc gọi thoại & video (`call:initiate`, `call:incoming`, `call:answer`, `call:hangup`) kết nối qua lại giữa điện thoại và máy tính/web.
 - **Kết bạn & Tìm kiếm:** Hộp thoại tìm bạn theo Số điện thoại hoặc Tên đăng nhập (username), hiển thị thông tin thẻ người dùng, gửi/chấp nhận lời mời kết bạn.
 - **Trò chuyện trực tiếp (Chat):** Danh bạ bạn bè, cửa sổ chat thời gian thực, bong bóng tin nhắn gửi/nhận, lưu trữ bền vững với SharedPreferences, mô phỏng phản hồi tự động thông minh.
 - **Gọi thoại (Audio Call 📞) & Gọi Video (Video Call 📹):**

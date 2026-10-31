@@ -13,6 +13,8 @@ class Friend {
     this.lastMessage = '',
     this.lastMessageTime = '',
     this.unreadCount = 0,
+    this.bio,
+    this.gender,
   });
 
   final String id;
@@ -25,6 +27,8 @@ class Friend {
   final String lastMessage;
   final String lastMessageTime;
   final int unreadCount;
+  final String? bio;
+  final String? gender;
 
   Friend copyWith({
     String? id,
@@ -37,6 +41,8 @@ class Friend {
     String? lastMessage,
     String? lastMessageTime,
     int? unreadCount,
+    String? bio,
+    String? gender,
   }) {
     return Friend(
       id: id ?? this.id,
@@ -49,21 +55,27 @@ class Friend {
       lastMessage: lastMessage ?? this.lastMessage,
       lastMessageTime: lastMessageTime ?? this.lastMessageTime,
       unreadCount: unreadCount ?? this.unreadCount,
+      bio: bio ?? this.bio,
+      gender: gender ?? this.gender,
     );
   }
 
   factory Friend.fromJson(Map<String, dynamic> json) {
+    final status = json['status']?.toString();
+    final isOnline = json['isOnline'] as bool? ?? (status == 'online');
     return Friend(
       id: json['id']?.toString() ?? '',
       name: json['name']?.toString() ?? '',
       username: json['username']?.toString() ?? '',
       phone: json['phone']?.toString() ?? '',
       avatar: json['avatar']?.toString() ?? '',
-      isOnline: json['isOnline'] as bool? ?? false,
-      statusMessage: json['statusMessage']?.toString() ?? 'Đang hoạt động',
+      isOnline: isOnline,
+      statusMessage: json['bio']?.toString() ?? json['statusMessage']?.toString() ?? 'Đang hoạt động',
       lastMessage: json['lastMessage']?.toString() ?? '',
       lastMessageTime: json['lastMessageTime']?.toString() ?? '',
       unreadCount: (json['unreadCount'] as num?)?.toInt() ?? 0,
+      bio: json['bio']?.toString(),
+      gender: json['gender']?.toString(),
     );
   }
 
@@ -78,6 +90,8 @@ class Friend {
         'lastMessage': lastMessage,
         'lastMessageTime': lastMessageTime,
         'unreadCount': unreadCount,
+        'bio': bio,
+        'gender': gender,
       };
 }
 
@@ -93,6 +107,7 @@ class ChatMessage {
     this.isCall = false,
     this.callDuration,
     this.imageUrl,
+    this.timestamp,
   });
 
   final String id;
@@ -104,18 +119,41 @@ class ChatMessage {
   final bool isCall;
   final String? callDuration;
   final String? imageUrl;
+  final int? timestamp;
 
-  factory ChatMessage.fromJson(Map<String, dynamic> json) {
+  factory ChatMessage.fromJson(Map<String, dynamic> json, {String? currentUserId}) {
+    final sId = json['senderId']?.toString() ?? json['sender_id']?.toString() ?? '';
+    final rId = json['receiverId']?.toString() ?? json['targetId']?.toString() ?? json['target_id']?.toString() ?? '';
+    final isMeExplicit = json['isMe'] as bool?;
+    final isMe = isMeExplicit ?? (currentUserId != null ? (sId == currentUserId || sId == 'me') : (sId == 'me'));
+
+    String timeStr = json['time']?.toString() ?? '';
+    final rawTs = json['timestamp'];
+    int? ts;
+    if (rawTs is num) {
+      ts = rawTs.toInt();
+    } else if (rawTs != null) {
+      ts = int.tryParse(rawTs.toString());
+    }
+
+    if (timeStr.isEmpty && ts != null && ts > 0) {
+      final dt = DateTime.fromMillisecondsSinceEpoch(ts);
+      timeStr = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    }
+
+    final isCallVal = json['isCall'] as bool? ?? (json['message_type'] == 'call' || json['messageType'] == 'call');
+
     return ChatMessage(
       id: json['id']?.toString() ?? '',
-      senderId: json['senderId']?.toString() ?? '',
-      receiverId: json['receiverId']?.toString() ?? '',
+      senderId: sId,
+      receiverId: rId,
       text: json['text']?.toString() ?? '',
-      time: json['time']?.toString() ?? '',
-      isMe: json['isMe'] as bool? ?? true,
-      isCall: json['isCall'] as bool? ?? false,
+      time: timeStr.isNotEmpty ? timeStr : 'Vừa xong',
+      isMe: isMe,
+      isCall: isCallVal,
       callDuration: json['callDuration']?.toString(),
-      imageUrl: json['imageUrl']?.toString(),
+      imageUrl: json['imageUrl']?.toString() ?? json['image_url']?.toString(),
+      timestamp: ts,
     );
   }
 
@@ -129,6 +167,7 @@ class ChatMessage {
         'isCall': isCall,
         'callDuration': callDuration,
         'imageUrl': imageUrl,
+        'timestamp': timestamp,
       };
 }
 
