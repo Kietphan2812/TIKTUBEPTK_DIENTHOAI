@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../data/chat_service.dart';
+import '../data/user_preferences.dart';
 import '../data/tiktube_api.dart';
 import '../models/auth_session.dart';
 import '../models/profile.dart';
@@ -63,7 +64,15 @@ class AuthController extends ChangeNotifier {
 
       try {
         final Profile fresh = await _api.fetchProfile();
-        _profile = fresh.copyWith(phone: fresh.phone ?? _profile?.phone);
+        final key = fresh.userKey.trim().toLowerCase();
+        final savedPhone = await UserPreferences.getUserPhone(key);
+        final effectivePhone = (fresh.phone != null && fresh.phone!.isNotEmpty)
+            ? fresh.phone
+            : (savedPhone ?? _profile?.phone);
+        _profile = fresh.copyWith(phone: effectivePhone);
+        if (effectivePhone != null && effectivePhone.isNotEmpty) {
+          unawaited(UserPreferences.saveUserPhone(key, effectivePhone));
+        }
         await _persist();
         notifyListeners();
         unawaited(ChatService.instance.syncWithProfile(_profile));
@@ -87,7 +96,22 @@ class AuthController extends ChangeNotifier {
     required String password,
   }) async {
     final session = await _api.login(login: login, password: password);
-    await _apply(session);
+    final key = session.profile.userKey.trim().toLowerCase();
+    String? phone = session.profile.phone;
+    if (phone == null || phone.isEmpty) {
+      phone = await UserPreferences.getUserPhone(key);
+    } else {
+      unawaited(UserPreferences.saveUserPhone(key, phone));
+    }
+
+    final updatedSession = (phone != null && phone.isNotEmpty)
+        ? AuthSession(
+            token: session.token,
+            profile: session.profile.copyWith(phone: phone),
+          )
+        : session;
+
+    await _apply(updatedSession);
   }
 
   Future<void> register({
@@ -106,6 +130,9 @@ class AuthController extends ChangeNotifier {
       phone: phone,
       age: age,
     );
+    if (phone != null && phone.isNotEmpty) {
+      unawaited(UserPreferences.saveUserPhone(username, phone));
+    }
     await _apply(session);
   }
 
@@ -135,6 +162,10 @@ class AuthController extends ChangeNotifier {
   /// Cập nhật hồ sơ đang hiển thị sau khi người dùng lưu ở trang tài khoản.
   void updateProfileCache(Profile profile) {
     _profile = profile;
+    final phone = profile.phone;
+    if (phone != null && phone.isNotEmpty) {
+      unawaited(UserPreferences.saveUserPhone(profile.userKey, phone));
+    }
     unawaited(_persist());
     notifyListeners();
     unawaited(ChatService.instance.syncWithProfile(profile));

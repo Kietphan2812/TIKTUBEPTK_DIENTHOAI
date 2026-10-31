@@ -8,6 +8,7 @@ import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import '../models/chat_contact.dart';
 import '../models/profile.dart';
+import 'user_preferences.dart';
 
 class ChatService extends ChangeNotifier {
   static const Friend myCloud = Friend(
@@ -110,10 +111,21 @@ class ChatService extends ChangeNotifier {
 
     final cleanPhone = (profile.phone ?? '').trim().replaceAll(' ', '');
     if (cleanPhone.isNotEmpty) {
+      unawaited(UserPreferences.saveUserPhone(profile.userKey, cleanPhone));
       if (_currentUser != null && _currentUser!.phone != cleanPhone) {
         _currentUser = _currentUser!.copyWith(phone: cleanPhone);
         await _saveCurrentUserToStorage();
         notifyListeners();
+      }
+    } else {
+      final savedPhone = await UserPreferences.getUserPhone(profile.userKey);
+      if (savedPhone != null && savedPhone.isNotEmpty) {
+        _currentProfile = _currentProfile?.copyWith(phone: savedPhone);
+        if (_currentUser != null && _currentUser!.phone != savedPhone) {
+          _currentUser = _currentUser!.copyWith(phone: savedPhone);
+          await _saveCurrentUserToStorage();
+          notifyListeners();
+        }
       }
     }
 
@@ -273,6 +285,12 @@ class ChatService extends ChangeNotifier {
           for (final u in _allUsers) {
             if (u.username.toLowerCase() == targetAccountKey) {
               targetUser = u;
+              if (u.phone.isNotEmpty && !u.phone.startsWith('0320001688')) {
+                unawaited(UserPreferences.saveUserPhone(targetAccountKey, u.phone));
+                if (_currentProfile != null && (_currentProfile!.phone == null || _currentProfile!.phone!.isEmpty)) {
+                  _currentProfile = _currentProfile!.copyWith(phone: u.phone);
+                }
+              }
               break;
             }
           }
@@ -723,6 +741,7 @@ class ChatService extends ChangeNotifier {
 
     if (_currentProfile != null) {
       _currentProfile = _currentProfile!.copyWith(phone: clean);
+      unawaited(UserPreferences.saveUserPhone(_currentProfile!.userKey, clean));
     }
 
     if (_currentUser != null) {

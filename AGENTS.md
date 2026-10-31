@@ -128,6 +128,13 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
   - Thanh trạng thái `_buildNeonStatusBanner` trên `ChatScreen` ưu tiên hiển thị SĐT thực đã lưu, loại bỏ triệt để chuỗi hash ngẫu nhiên cũ (`0320001688`).
   - Khi khởi động lại app (`AuthController.restore()`), hệ thống bảo toàn trường `phone` của phiên hiện tại thay vì bị ghi đè bởi giá trị rỗng từ máy chủ video.
 
+### 3.10. Lưu số điện thoại vĩnh viễn theo tài khoản (UserPreferences)
+- **Cơ chế lưu trữ vĩnh viễn:**
+  - Tạo `UserPreferences` lưu trữ vĩnh viễn số điện thoại theo khóa riêng biệt `tiktube_permanent_phone_<userKey>` trên thiết bị. Khóa này KHÔNG bị xóa khi người dùng đăng xuất.
+  - Khi người dùng đăng nhập lại (`AuthController.login()`), hệ thống tự động tìm và gắn lại số điện thoại đã lưu vào hồ sơ người dùng.
+  - Khi mở trang Tài khoản (`AccountScreen`), nếu số điện thoại chưa kịp tải từ máy chủ, hệ thống tự động phục hồi từ `UserPreferences.getUserPhone` và điền lại vào ô nhập ngay lập tức.
+  - Trong `ChatService`, khi tải danh sách người dùng từ Neon SQL, nếu tài khoản đã có SĐT trên Neon, hệ thống tự động sao lưu ngược lại vào `UserPreferences` để bảo toàn dữ liệu vĩnh viễn xuyên suốt mọi phiên đăng nhập/đăng xuất.
+
 ---
 
 ### 3.5. Quy chuẩn về cài đặt iOS (.ipa)

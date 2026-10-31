@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import '../data/chat_service.dart';
+import '../data/user_preferences.dart';
 import 'package:flutter/material.dart';
 
 import '../auth/auth_scope.dart';
@@ -52,11 +53,14 @@ class _AccountScreenState extends State<AccountScreen> {
     if (cached == null) return;
     _username.text = cached.name;
     _email.text = cached.email;
-    _phone.text = cached.phone ?? '';
     _age.text = cached.age?.toString() ?? '';
     _displayName = cached.name.isEmpty ? cached.userKey : cached.name;
     _userKey = cached.userKey;
     _avatarUrl = cached.avatarUrl;
+
+    if (cached.phone != null && cached.phone!.isNotEmpty) {
+      _phone.text = cached.phone!;
+    }
   }
 
   Future<void> _load() async {
@@ -68,9 +72,10 @@ class _AccountScreenState extends State<AccountScreen> {
       final Profile profile = await _api.fetchProfile();
       if (!mounted) return;
       final cachedProfile = AuthScope.maybeOf(context)?.profile;
+      final savedPhone = await UserPreferences.getUserPhone(profile.userKey);
       final effectivePhone = (profile.phone != null && profile.phone!.isNotEmpty)
           ? profile.phone
-          : (cachedProfile?.phone ?? _phone.text.trim());
+          : (cachedProfile?.phone ?? (savedPhone ?? _phone.text.trim()));
       setState(() {
         _username.text = profile.name;
         _email.text = profile.email;
@@ -83,6 +88,9 @@ class _AccountScreenState extends State<AccountScreen> {
         _avatarUrl = profile.avatarUrl;
         _loading = false;
       });
+      if (effectivePhone != null && effectivePhone.isNotEmpty) {
+        unawaited(UserPreferences.saveUserPhone(profile.userKey, effectivePhone));
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -158,6 +166,8 @@ class _AccountScreenState extends State<AccountScreen> {
         _phone.text = profile.phone ?? phone;
         _saving = false;
       });
+      unawaited(UserPreferences.saveUserPhone(profile.userKey, profile.phone ?? phone));
+      if (!mounted) return;
       AuthScope.maybeOf(context)?.updateProfileCache(profile);
       unawaited(ChatService.instance.updateCurrentUserPhone(profile.phone ?? phone));
       _notify(message);
