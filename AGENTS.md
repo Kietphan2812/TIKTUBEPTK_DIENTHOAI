@@ -78,7 +78,9 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
   - Đồng bộ 2 chiều thời gian thực với web app `https://nhantinptk.onrender.com`.
 - **Giao diện & Tính năng:**
   - Huy hiệu trạng thái thời gian thực: `🟢 Neon SQL Online` / `🟠 Đang kết nối SQL...`.
-  - Hỗ trợ đổi tài khoản linh hoạt giữa các tài khoản người dùng Neon (`Phantaanskieetj`, `ptk`, `Nguyễn Thế Nhất`, `nhung2050`, `Xuân Nghi`).
+  - Đăng ký tài khoản: Tích hợp ô nhập **Số điện thoại** (9-11 số), tự động đồng bộ SĐT vào Neon PostgreSQL để tìm kiếm bạn bè và kết nối nhắn tin.
+  - **Cloud của tôi (Lưu trữ đám mây cá nhân):** Tính năng lưu trữ riêng tư độc lập (icon Cloud xanh ☁️), hỗ trợ lưu trữ văn bản, ghi chú, và ảnh cá nhân vĩnh viễn trên Cloudinary `qfgja134` và Neon Postgres. Đã loại bỏ các tài khoản bot mẫu cũ.
+  - Loại bỏ hoàn toàn hộp thoại và nút "Đổi nick" tạm thời, tài khoản đăng nhập gắn liền với phiên người dùng TIKTUBE.
   - Gửi hình ảnh qua Cloudinary hiển thị mượt mà trong bong bóng chat.
   - Tín hiệu cuộc gọi thoại & video (`call:initiate`, `call:incoming`, `call:answer`, `call:hangup`) kết nối qua lại giữa điện thoại và máy tính/web.
 - **Kết bạn & Tìm kiếm:** Hộp thoại tìm bạn theo Số điện thoại hoặc Tên đăng nhập (username), hiển thị thông tin thẻ người dùng, gửi/chấp nhận lời mời kết bạn.

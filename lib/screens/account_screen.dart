@@ -23,6 +23,7 @@ class _AccountScreenState extends State<AccountScreen> {
   late final TikTubeApi _api;
   final TextEditingController _username = TextEditingController();
   final TextEditingController _email = TextEditingController();
+  final TextEditingController _phone = TextEditingController();
   final TextEditingController _age = TextEditingController();
 
   bool _loading = true;
@@ -49,6 +50,7 @@ class _AccountScreenState extends State<AccountScreen> {
     if (cached == null) return;
     _username.text = cached.name;
     _email.text = cached.email;
+    _phone.text = cached.phone ?? '';
     _age.text = cached.age?.toString() ?? '';
     _displayName = cached.name.isEmpty ? cached.userKey : cached.name;
     _userKey = cached.userKey;
@@ -66,6 +68,7 @@ class _AccountScreenState extends State<AccountScreen> {
       setState(() {
         _username.text = profile.name;
         _email.text = profile.email;
+        _phone.text = profile.phone ?? '';
         _age.text = profile.age?.toString() ?? '';
         _displayName = profile.name.isEmpty ? profile.userKey : profile.name;
         _userKey = profile.userKey;
@@ -85,6 +88,7 @@ class _AccountScreenState extends State<AccountScreen> {
   void dispose() {
     _username.dispose();
     _email.dispose();
+    _phone.dispose();
     _age.dispose();
     super.dispose();
   }
@@ -418,6 +422,7 @@ class _AccountScreenState extends State<AccountScreen> {
                             compact: compact,
                             username: _username,
                             email: _email,
+                            phone: _phone,
                             age: _age,
                             saving: _saving,
                             onSave: _save,
@@ -614,6 +619,7 @@ class _ProfileFormCard extends StatelessWidget {
     required this.compact,
     required this.username,
     required this.email,
+    required this.phone,
     required this.age,
     required this.saving,
     required this.onSave,
@@ -622,6 +628,7 @@ class _ProfileFormCard extends StatelessWidget {
   final bool compact;
   final TextEditingController username;
   final TextEditingController email;
+  final TextEditingController phone;
   final TextEditingController age;
   final bool saving;
   final VoidCallback onSave;
@@ -669,6 +676,15 @@ class _ProfileFormCard extends StatelessWidget {
             hint: 'email@example.com',
             icon: Icons.mail_outline_rounded,
             keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.next,
+          ),
+          const SizedBox(height: 12),
+          _ProfileField(
+            controller: phone,
+            label: 'Số điện thoại',
+            hint: '0338351410',
+            icon: Icons.phone_outlined,
+            keyboardType: TextInputType.phone,
             textInputAction: TextInputAction.next,
           ),
           const SizedBox(height: 12),

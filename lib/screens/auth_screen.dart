@@ -34,6 +34,7 @@ class _AuthScreenState extends State<AuthScreen> {
   final TextEditingController _password = TextEditingController();
   final TextEditingController _confirmPassword = TextEditingController();
   final TextEditingController _age = TextEditingController();
+  final TextEditingController _phone = TextEditingController();
 
   bool _register = false;
   bool _showPassword = false;
@@ -50,6 +51,7 @@ class _AuthScreenState extends State<AuthScreen> {
     _password.dispose();
     _confirmPassword.dispose();
     _age.dispose();
+    _phone.dispose();
     super.dispose();
   }
 
@@ -83,6 +85,7 @@ class _AuthScreenState extends State<AuthScreen> {
           username: _username.text.trim().toLowerCase(),
           email: _email.text.trim().toLowerCase(),
           password: _password.text,
+          phone: _phone.text.trim(),
           age: ageText.isEmpty ? null : int.tryParse(ageText),
         );
       } else {
@@ -125,6 +128,18 @@ class _AuthScreenState extends State<AuthScreen> {
     if (email.isEmpty) return 'Vui lòng nhập email.';
     final RegExp pattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
     if (!pattern.hasMatch(email)) return 'Email không hợp lệ.';
+    return null;
+  }
+
+
+  String? _phoneValidator(String? value) {
+    final trimmed = value?.trim() ?? '';
+    if (trimmed.isEmpty) {
+      return 'Vui lòng nhập số điện thoại để kết bạn & nhắn tin.';
+    }
+    if (!RegExp(r'^[0-9]{9,11}$').hasMatch(trimmed)) {
+      return 'Số điện thoại cần từ 9 đến 11 chữ số.';
+    }
     return null;
   }
 
@@ -651,6 +666,21 @@ class _AuthScreenState extends State<AuthScreen> {
                 ],
               );
             },
+          ),
+          const SizedBox(height: 12),
+          _AuthField(
+            controller: _phone,
+            label: 'Số điện thoại',
+            hint: 'Ví dụ: 0338351410',
+            icon: Icons.phone_outlined,
+            autofillHints: const <String>[AutofillHints.telephoneNumber],
+            keyboardType: TextInputType.phone,
+            textInputAction: TextInputAction.next,
+            inputFormatters: <TextInputFormatter>[
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(11),
+            ],
+            validator: _phoneValidator,
           ),
           const SizedBox(height: 12),
           _AuthField(

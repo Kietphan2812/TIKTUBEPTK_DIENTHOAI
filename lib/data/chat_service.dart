@@ -9,6 +9,19 @@ import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../models/chat_contact.dart';
 
 class ChatService extends ChangeNotifier {
+  static const Friend myCloud = Friend(
+    id: 'my_cloud',
+    name: 'Cloud của tôi',
+    username: 'my_cloud',
+    phone: '',
+    avatar: 'cloud_icon',
+    isOnline: true,
+    statusMessage: 'Lưu trữ đám mây cá nhân',
+    lastMessage: 'Nơi lưu trữ an toàn văn bản, hình ảnh và tập tin cá nhân.',
+    lastMessageTime: '',
+    unreadCount: 0,
+  );
+
   ChatService._();
   static final ChatService instance = ChatService._();
 
@@ -117,32 +130,7 @@ class ChatService extends ChangeNotifier {
   void _seedInitialFriends() {
     _friends
       ..clear()
-      ..addAll(<Friend>[
-        const Friend(
-          id: 'ptk_admin',
-          name: 'TIKTUBE Official',
-          username: 'tiktube_official',
-          phone: '0900000001',
-          avatar: '',
-          isOnline: true,
-          statusMessage: 'Kênh hỗ trợ chính thức TIKTUBE',
-          lastMessage: 'Chào mừng bạn đến với tính năng Tin nhắn & Bạn bè TIKTUBE!',
-          lastMessageTime: '08:30',
-          unreadCount: 0,
-        ),
-        const Friend(
-          id: 'nhantin_ptk',
-          name: 'Trợ lý AI TIKTUBE',
-          username: 'nhantinptk',
-          phone: '0911223344',
-          avatar: '',
-          isOnline: true,
-          statusMessage: 'Trợ lý AI hỗ trợ & hỏi đáp 24/7',
-          lastMessage: 'Hệ thống gọi điện thoại và nhắn tin kết nối Neon SQL đã sẵn sàng.',
-          lastMessageTime: '10:15',
-          unreadCount: 0,
-        ),
-      ]);
+      ..add(myCloud);
   }
 
   /// Đồng bộ người dùng và dữ liệu từ Neon Cloud PostgreSQL
@@ -219,33 +207,8 @@ class ChatService extends ChangeNotifier {
           final myFriendIds = userFriendsMap[_currentUser!.id] ?? <String>[];
           final List<Friend> newFriendsList = <Friend>[];
 
-          // Giữ TIKTUBE Official & Trợ lý AI ở đầu
-          newFriendsList.addAll([
-            const Friend(
-              id: 'ptk_admin',
-              name: 'TIKTUBE Official',
-              username: 'tiktube_official',
-              phone: '0900000001',
-              avatar: '',
-              isOnline: true,
-              statusMessage: 'Kênh hỗ trợ chính thức TIKTUBE',
-              lastMessage: 'Kênh hỗ trợ trực tuyến 24/7.',
-              lastMessageTime: '08:30',
-              unreadCount: 0,
-            ),
-            const Friend(
-              id: 'nhantin_ptk',
-              name: 'Trợ lý AI TIKTUBE',
-              username: 'nhantinptk',
-              phone: '0911223344',
-              avatar: '',
-              isOnline: true,
-              statusMessage: 'Trợ lý AI hỗ trợ & hỏi đáp 24/7',
-              lastMessage: 'Đã kết nối cơ sở dữ liệu Neon PostgreSQL.',
-              lastMessageTime: '10:15',
-              unreadCount: 0,
-            ),
-          ]);
+          // Cloud của tôi (Lưu trữ đám mây cá nhân) luôn nằm ở vị trí đầu tiên
+          newFriendsList.add(myCloud);
 
           // Thêm các bạn bè thật từ Neon Postgres
           for (final friendId in myFriendIds) {
@@ -355,7 +318,10 @@ class ChatService extends ChangeNotifier {
 
       _socket!.on('chat:history', (data) {
         if (data is Map) {
-          final targetId = data['targetId']?.toString();
+          String? targetId = data['targetId']?.toString();
+          if (targetId == _currentUser?.id) {
+            targetId = 'my_cloud';
+          }
           final rawMsgs = data['messages'];
           if (targetId != null && rawMsgs is List) {
             final List<ChatMessage> list = <ChatMessage>[];
@@ -397,7 +363,9 @@ class ChatService extends ChangeNotifier {
           final msg = ChatMessage.fromJson(map, currentUserId: _currentUser?.id);
 
           final myId = _currentUser?.id ?? '';
-          final partnerId = (msg.senderId == myId) ? msg.receiverId : msg.senderId;
+          final partnerId = (msg.senderId == myId && (msg.receiverId == myId || msg.receiverId == 'my_cloud'))
+              ? 'my_cloud'
+              : ((msg.senderId == myId) ? msg.receiverId : msg.senderId);
 
           if (partnerId.isNotEmpty) {
             final list = _messages.putIfAbsent(partnerId, () => <ChatMessage>[]);
@@ -472,7 +440,7 @@ class ChatService extends ChangeNotifier {
   void _fetchAllChatHistories() {
     if (_socket != null && _socket!.connected && _currentUser != null) {
       for (final f in _friends) {
-        if (f.id != 'ptk_admin' && f.id != 'nhantin_ptk') {
+        if (f.id != 'my_cloud') {
           _socket!.emit('chat:get_history', {
             'targetId': f.id,
             'isGroup': false,
@@ -485,8 +453,9 @@ class ChatService extends ChangeNotifier {
   /// Tải lịch sử trò chuyện cho một người bạn cụ thể
   void loadChatHistory(String friendId) {
     if (_socket != null && _socket!.connected && _currentUser != null) {
+      final targetId = (friendId == 'my_cloud') ? _currentUser!.id : friendId;
       _socket!.emit('chat:get_history', {
-        'targetId': friendId,
+        'targetId': targetId,
         'isGroup': false,
       });
     }
@@ -688,6 +657,7 @@ class ChatService extends ChangeNotifier {
     final myAvatar = _currentUser?.avatar ?? '';
 
     final msgId = 'msg_${DateTime.now().millisecondsSinceEpoch}';
+    final targetUserId = (friendId == 'my_cloud') ? myId : friendId;
 
     // 1. Gửi qua Socket.io tới server để ghi vào bảng messages của Neon PostgreSQL
     if (_socket != null && _socket!.connected) {
@@ -696,11 +666,11 @@ class ChatService extends ChangeNotifier {
         'senderId': myId,
         'senderName': myName,
         'senderAvatar': myAvatar,
-        'targetId': friendId,
+        'targetId': targetUserId,
         'isGroup': false,
         'text': clean,
         'imageUrl': imageUrl,
-        'messageType': 'normal',
+        'messageType': (friendId == 'my_cloud') ? 'cloud_note' : 'normal',
       });
     }
 
@@ -733,10 +703,7 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
     await _saveToStorage();
 
-    // Nếu đang nhắn tin với Trợ lý AI hoặc tài khoản bot demo
-    if (friendId == 'ptk_admin' || friendId == 'nhantin_ptk') {
-      _simulateFriendReply(friendId, clean);
-    }
+
   }
 
   /// Bắt đầu cuộc gọi thoại hoặc video qua tín hiệu Socket.io
@@ -819,49 +786,7 @@ class ChatService extends ChangeNotifier {
     unawaited(_saveToStorage());
   }
 
-  void _simulateFriendReply(String friendId, String userMessage) {
-    Timer(const Duration(milliseconds: 1400), () {
-      final now = DateTime.now();
-      final timeStr =
-          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
-      String replyText = 'Mình đã nhận được tin nhắn của bạn nhé! 👍';
-      final lower = userMessage.toLowerCase();
-      if (lower.contains('chào') || lower.contains('alo') || lower.contains('hi')) {
-        replyText = 'Chào bạn! Rất vui được trò chuyện cùng bạn trên hệ thống TIKTUBE & nhantinptk!';
-      } else if (lower.contains('video') || lower.contains('xem')) {
-        replyText = 'Video trên TIKTUBE mượt mà lắm, mình đang theo dõi kênh của bạn nè!';
-      } else if (lower.contains('sql') || lower.contains('neon')) {
-        replyText = 'Dữ liệu tin nhắn đã được kết nối và lưu trữ an toàn trên Neon Cloud PostgreSQL!';
-      } else if (lower.contains('gọi') || lower.contains('alo')) {
-        replyText = 'Bạn có thể bấm biểu tượng 📞 hoặc 📹 ở góc trên để gọi thử cho mình nha!';
-      }
-
-      final replyMsg = ChatMessage(
-        id: 'reply_${DateTime.now().millisecondsSinceEpoch}',
-        senderId: friendId,
-        receiverId: _currentUser?.id ?? 'me',
-        text: replyText,
-        time: timeStr,
-        isMe: false,
-        timestamp: DateTime.now().millisecondsSinceEpoch,
-      );
-
-      _messages.putIfAbsent(friendId, () => <ChatMessage>[]).add(replyMsg);
-
-      final index = _friends.indexWhere((f) => f.id == friendId);
-      if (index >= 0) {
-        final f = _friends[index];
-        _friends[index] = f.copyWith(
-          lastMessage: replyText,
-          lastMessageTime: timeStr,
-          unreadCount: f.unreadCount + 1,
-        );
-      }
-      notifyListeners();
-      unawaited(_saveToStorage());
-    });
-  }
 
   @override
   void dispose() {

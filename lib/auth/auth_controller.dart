@@ -92,6 +92,7 @@ class AuthController extends ChangeNotifier {
     required String username,
     required String email,
     required String password,
+    String? phone,
     int? age,
   }) async {
     final session = await _api.register(
@@ -99,6 +100,7 @@ class AuthController extends ChangeNotifier {
       username: username,
       email: email,
       password: password,
+      phone: phone,
       age: age,
     );
     await _apply(session);

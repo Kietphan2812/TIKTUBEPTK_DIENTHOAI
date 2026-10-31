@@ -122,6 +122,7 @@ abstract interface class TikTubeApi {
     required String username,
     required String email,
     required String password,
+    String? phone,
     int? age,
   });
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -433,6 +434,7 @@ class ApiClient implements TikTubeApi {
     required String username,
     required String email,
     required String password,
+    String? phone,
     int? age,
   }) async {
     final data = await _request(
@@ -443,10 +445,37 @@ class ApiClient implements TikTubeApi {
         'username': username,
         'email': email,
         'password': password,
+        'phone': phone,
         'age': age,
       },
     );
-    return AuthSession.fromJson(data);
+
+    // Tự động đồng bộ tài khoản và SĐT sang hệ thống chat Neon SQL
+    if (phone != null && phone.isNotEmpty) {
+      unawaited(() async {
+        try {
+          await http.post(
+            Uri.parse('https://nhantinptk.onrender.com/api/auth/register'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'name': name,
+              'username': username,
+              'phone': phone,
+              'password': password,
+            }),
+          );
+        } catch (_) {}
+      }());
+    }
+
+    final session = AuthSession.fromJson(data);
+    if (phone != null && phone.isNotEmpty) {
+      return AuthSession(
+        token: session.token,
+        profile: session.profile.copyWith(phone: phone),
+      );
+    }
+    return session;
   }
 
   @override

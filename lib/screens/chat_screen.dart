@@ -193,100 +193,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _showAccountSwitcher() {
-    final p = context.palette;
-    final allUsers = _chatService.allUsers;
-    final current = _chatService.currentUser;
-
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: p.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    Icon(Icons.switch_account_rounded, color: p.brandRed, size: 24),
-                    const SizedBox(width: 10),
-                    Text(
-                      'Đổi tài khoản nhắn tin',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: p.textPrimary,
-                      ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      icon: Icon(Icons.close_rounded, color: p.textSecondary),
-                      onPressed: () => Navigator.of(ctx).pop(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Chọn tài khoản người dùng từ cơ sở dữ liệu Neon PostgreSQL:',
-                  style: TextStyle(fontSize: 12.5, color: p.textSecondary),
-                ),
-                const SizedBox(height: 12),
-                Flexible(
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: allUsers.length,
-                    itemBuilder: (context, idx) {
-                      final u = allUsers[idx];
-                      final bool isSelected = current?.id == u.id;
-                      return Container(
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        decoration: BoxDecoration(
-                          color: isSelected ? p.chip : p.surfaceAlt,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isSelected ? p.brandRed : p.border,
-                            width: isSelected ? 1.5 : 1,
-                          ),
-                        ),
-                        child: ListTile(
-                          onTap: () {
-                            _chatService.switchCurrentUser(u);
-                            Navigator.of(ctx).pop();
-                          },
-                          leading: _buildAvatar(u, 40),
-                          title: Text(
-                            u.name,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                              color: p.textPrimary,
-                            ),
-                          ),
-                          subtitle: Text(
-                            'SĐT: ${u.phone} • @${u.username}',
-                            style: TextStyle(fontSize: 11.5, color: p.textSecondary),
-                          ),
-                          trailing: isSelected
-                              ? Icon(Icons.check_circle_rounded, color: p.brandRed, size: 22)
-                              : null,
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
 
   void _showAddFriend() {
     AddFriendDialog.show(
@@ -390,40 +296,13 @@ class _ChatScreenState extends State<ChatScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              user != null ? '${user.name} (${user.phone})' : 'Đang tải tài khoản...',
+              user != null ? '${user.name} (${user.phone.isNotEmpty ? user.phone : '@${user.username}'})' : 'Đang tải tài khoản...',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: p.textPrimary,
-              ),
-            ),
-          ),
-          InkWell(
-            onTap: _showAccountSwitcher,
-            borderRadius: BorderRadius.circular(999),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: p.surfaceAlt,
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: p.border),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Icon(Icons.swap_horiz_rounded, size: 14, color: p.brandRed),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Đổi nick',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: p.brandRed,
-                    ),
-                  ),
-                ],
               ),
             ),
           ),
@@ -578,6 +457,64 @@ class _ChatScreenState extends State<ChatScreen> {
           child: _activeTab == 0 ? _buildChatList(p) : _buildContactsList(p),
         ),
       ],
+    );
+  }
+
+  Widget _buildCloudWelcomeCard(PtPalette p) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0088FF).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFF0088FF).withValues(alpha: 0.25),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Container(
+            width: 44,
+            height: 44,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Color(0xFF0088FF),
+            ),
+            alignment: Alignment.center,
+            child: const Icon(
+              Icons.cloud_rounded,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Text(
+                  'Cloud của tôi',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0088FF),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Nơi lưu trữ an toàn văn bản, hình ảnh và tập tin cá nhân. Chỉ có bạn mới có thể truy cập nội dung này trên bất kỳ thiết bị nào.',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.45,
+                    color: p.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1095,16 +1032,18 @@ class _ChatScreenState extends State<ChatScreen> {
                     ],
                   ),
                 ),
-                IconButton(
-                  onPressed: _makeAudioCall,
-                  icon: Icon(Icons.phone_outlined, color: p.textPrimary, size: 21),
-                  tooltip: 'Gọi thoại',
-                ),
-                IconButton(
-                  onPressed: _makeVideoCall,
-                  icon: Icon(Icons.videocam_outlined, color: p.textPrimary, size: 23),
-                  tooltip: 'Gọi video',
-                ),
+                if (friend.id != 'my_cloud') ...<Widget>[
+                  IconButton(
+                    onPressed: _makeAudioCall,
+                    icon: Icon(Icons.phone_outlined, color: p.textPrimary, size: 21),
+                    tooltip: 'Gọi thoại',
+                  ),
+                  IconButton(
+                    onPressed: _makeVideoCall,
+                    icon: Icon(Icons.videocam_outlined, color: p.textPrimary, size: 23),
+                    tooltip: 'Gọi video',
+                  ),
+                ],
               ],
             ),
           ),
@@ -1112,28 +1051,30 @@ class _ChatScreenState extends State<ChatScreen> {
         // Danh sách tin nhắn
         Expanded(
           child: messages.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      _buildAvatar(friend, 64),
-                      const SizedBox(height: 12),
-                      Text(
-                        friend.name,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: p.textPrimary,
-                        ),
+              ? (friend.id == 'my_cloud'
+                  ? Center(child: _buildCloudWelcomeCard(p))
+                  : Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          _buildAvatar(friend, 64),
+                          const SizedBox(height: 12),
+                          Text(
+                            friend.name,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: p.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Hãy gửi lời chào để bắt đầu kết nối!',
+                            style: TextStyle(fontSize: 12.5, color: p.textSecondary),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Hãy gửi lời chào để bắt đầu kết nối!',
-                        style: TextStyle(fontSize: 12.5, color: p.textSecondary),
-                      ),
-                    ],
-                  ),
-                )
+                    ))
               : ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -1186,7 +1127,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       cursorColor: p.brandRed,
                       style: TextStyle(fontSize: 13.5, color: p.textPrimary),
                       decoration: InputDecoration(
-                        hintText: 'Nhập tin nhắn với ${friend.name}...',
+                        hintText: friend.id == 'my_cloud' ? 'Lưu tin nhắn, ảnh vào Cloud của tôi...' : 'Nhập tin nhắn với ${friend.name}...',
                         hintStyle: TextStyle(
                           fontSize: 13,
                           color: p.textSecondary.withValues(alpha: 0.8),
@@ -1388,6 +1329,34 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // Avatar người dùng với gradient nghệ thuật & chấm online
   Widget _buildAvatar(Friend friend, double size) {
+    if (friend.id == 'my_cloud' || friend.avatar == 'cloud_icon') {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: const LinearGradient(
+            colors: <Color>[Color(0xFF0088FF), Color(0xFF0055FF)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: const Color(0xFF0088FF).withValues(alpha: 0.32),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        alignment: Alignment.center,
+        child: Icon(
+          Icons.cloud_rounded,
+          color: Colors.white,
+          size: size * 0.56,
+        ),
+      );
+    }
+
     final gradient = _gradientFor(friend.name);
 
     return Stack(
@@ -1435,24 +1404,23 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   bool _isSpecialAccount(String id) {
-    return id == 'ptk_admin' || id == 'nhantin_ptk';
+    return id == 'my_cloud';
   }
 
   Widget _buildBadgeTag(String id, PtPalette p) {
-    final isOfficial = id == 'ptk_admin';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
       decoration: BoxDecoration(
-        color: p.brandRed.withValues(alpha: 0.12),
+        color: const Color(0xFF0088FF).withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: p.brandRed.withValues(alpha: 0.25)),
+        border: Border.all(color: const Color(0xFF0088FF).withValues(alpha: 0.3)),
       ),
-      child: Text(
-        isOfficial ? 'OFFICIAL' : 'AI',
+      child: const Text(
+        'CLOUD',
         style: TextStyle(
           fontSize: 8.5,
           fontWeight: FontWeight.w800,
-          color: p.brandRed,
+          color: Color(0xFF0088FF),
           letterSpacing: 0.3,
         ),
       ),

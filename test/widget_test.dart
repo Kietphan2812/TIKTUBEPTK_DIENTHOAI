@@ -200,10 +200,11 @@ class _OfflineApi implements TikTubeApi {
     required String username,
     required String email,
     required String password,
+    String? phone,
     int? age,
   }) async => AuthSession(
     token: 'test-token',
-    profile: Profile(userKey: username, name: name, email: email, age: age),
+    profile: Profile(userKey: username, name: name, email: email, phone: phone, age: age),
   );
 
   @override
