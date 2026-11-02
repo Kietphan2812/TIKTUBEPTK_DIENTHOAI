@@ -8,6 +8,8 @@ class ServerConfig {
     this.cloudinaryCloudName = '',
     this.cloudinaryApiKey = '',
     this.cloudinaryApiSecret = '',
+    this.smtpEmail = 'kietphan4444@gmail.com',
+    this.smtpPassword = 'ptmibnyzmvhkmeig',
   });
 
   final String databaseUrl;
@@ -15,6 +17,8 @@ class ServerConfig {
   final String cloudinaryCloudName;
   final String cloudinaryApiKey;
   final String cloudinaryApiSecret;
+  final String smtpEmail;
+  final String smtpPassword;
 
   bool get hasCloudinary =>
       cloudinaryCloudName.isNotEmpty &&
@@ -40,12 +44,17 @@ class ServerConfig {
     }
 
     final port = int.tryParse(read('PORT')) ?? 8787;
+    final smtpEmail = read('SMTP_EMAIL');
+    final smtpPass = read('SMTP_PASSWORD');
+
     return ServerConfig(
       databaseUrl: _sanitizeDatabaseUrl(databaseUrl),
       port: port,
       cloudinaryCloudName: read('CLOUDINARY_CLOUD_NAME'),
       cloudinaryApiKey: read('CLOUDINARY_API_KEY'),
       cloudinaryApiSecret: read('CLOUDINARY_API_SECRET'),
+      smtpEmail: smtpEmail.isNotEmpty ? smtpEmail : 'kietphan4444@gmail.com',
+      smtpPassword: smtpPass.isNotEmpty ? smtpPass : 'ptmibnyzmvhkmeig',
     );
   }
 

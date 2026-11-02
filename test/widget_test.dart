@@ -210,6 +210,27 @@ class _OfflineApi implements TikTubeApi {
   );
 
   @override
+  Future<void> sendForgotPasswordOtp(String email) async {}
+
+  @override
+  Future<void> verifyOtp(String email, String otp) async {}
+
+  @override
+  Future<AuthSession> resetPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  }) async => const AuthSession(
+    token: 'test-token',
+    profile: Profile(
+      userKey: 'kiepthan4',
+      name: 'kiepthan4',
+      email: 'kiepthan4444@gmail.com',
+      age: 18,
+    ),
+  );
+
+  @override
   Future<void> logout() async {}
 
   @override

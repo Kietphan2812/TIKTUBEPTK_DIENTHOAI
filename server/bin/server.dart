@@ -6,6 +6,7 @@ import 'package:tiktube_server/api.dart';
 import 'package:tiktube_server/cloudinary.dart';
 import 'package:tiktube_server/config.dart';
 import 'package:tiktube_server/db.dart';
+import 'package:tiktube_server/email_service.dart';
 
 Future<void> main() async {
   final config = ServerConfig.load();
@@ -37,8 +38,14 @@ Future<void> main() async {
         : 'Cloudinary: đã cấu hình (${config.cloudinaryCloudName}).',
   );
 
+  final EmailService emailService = EmailService(
+    smtpEmail: config.smtpEmail,
+    smtpPassword: config.smtpPassword,
+  );
+  stdout.writeln('Gmail OTP Service: đã cấu hình (${config.smtpEmail}).');
+
   final server = await shelf_io.serve(
-    createApi(db, cloudinary: cloudinary),
+    createApi(db, cloudinary: cloudinary, emailService: emailService),
     InternetAddress.anyIPv4,
     config.port,
   );

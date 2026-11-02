@@ -134,6 +134,42 @@ limit 1
     return result.isNotEmpty;
   }
 
+  /// Tìm thông tin người dùng theo email.
+  Future<Map<String, Object?>?> findUserByEmail(String email) async {
+    final result = await _pool.execute(
+      Sql.named('''
+select nguoi_dung_id, ten_dang_nhap,
+       coalesce(nullif(ten_hien_thi, ''), ten_dang_nhap),
+       email, do_tuoi, anh_dai_dien
+from nguoi_dung
+where lower(email) = lower(@email)
+limit 1
+'''),
+      parameters: {'email': email.trim()},
+    );
+    if (result.isEmpty) return null;
+    return _profileFromRow(result.first);
+  }
+
+  /// Cập nhật mật khẩu mới theo email.
+  Future<bool> resetPasswordByEmail({
+    required String email,
+    required String newPassword,
+  }) async {
+    final result = await _pool.execute(
+      Sql.named('''
+update nguoi_dung
+set mat_khau_hash = @hash
+where lower(email) = lower(@email)
+'''),
+      parameters: {
+        'email': email.trim(),
+        'hash': _passwordHash(newPassword),
+      },
+    );
+    return result.affectedRows > 0;
+  }
+
   /// Tạo tài khoản mới trong bảng `nguoi_dung` của web.
   ///
   /// Hash SHA-256 (hex) để tài khoản tạo từ app vẫn đăng nhập được trên web —

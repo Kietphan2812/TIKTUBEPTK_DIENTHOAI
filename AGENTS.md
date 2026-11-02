@@ -155,6 +155,22 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
   - Xem ảnh phóng to toàn màn hình (`InteractiveViewer`) khi nhấn vào ảnh đã gửi/nhận.
   - Nút soạn tin/thêm bạn nhanh dạng FAB (Floating Action Button) phong cách ứng dụng di động chuẩn.
 
+### 3.12. Khôi phục mật khẩu qua Gmail OTP (Gmail App Password)
+- **Cơ chế gửi Email tự động:**
+  - Sử dụng giao thức Gmail SMTP SSL cổng 465 trực tiếp từ máy chủ Dart (`EmailService`), không phụ thuộc thư viện bên ngoài.
+  - Cấu hình qua biến môi trường `SMTP_EMAIL` và `SMTP_PASSWORD` (Mật khẩu ứng dụng 16 ký tự `ptmi bnyz mvhk meig` tạo từ tài khoản `kietphan4444@gmail.com`).
+  - Giao diện email HTML chuyên nghiệp với logo TIKTUBE, mã OTP 6 số in đậm viền đứt nét, cảnh báo bảo mật và thời gian hết hạn 5 phút.
+- **Backend API Endpoints:**
+  - `POST /api/auth/forgot-password`: Kiểm tra email trong bảng `nguoi_dung` Neon PostgreSQL, sinh mã OTP 6 số ngẫu nhiên, lưu bộ nhớ đệm và gửi email.
+  - `POST /api/auth/verify-otp`: Xác thực mã OTP trước khi cho phép đặt mật khẩu.
+  - `POST /api/auth/reset-password`: Xác thực OTP, cập nhật `mat_khau_hash` (SHA-256) vào Neon PostgreSQL và tự động phát hành phiên đăng nhập mới.
+- **Giao diện Client (AuthScreen):**
+  - Nút "Quên mật khẩu?" đặt dưới ô nhập Mật khẩu trên form đăng nhập.
+  - Hộp thoại khôi phục mật khẩu 3 bước (Stepper 1-2-3):
+    1. Nhập Email Gmail đã đăng ký.
+    2. Nhập mã OTP 6 số kèm đồng hồ đếm ngược 60 giây gửi lại.
+    3. Đặt mật khẩu mới (tối thiểu 8 ký tự) & Tự động đăng nhập vào ứng dụng ngay lập tức.
+
 ---
 
 ### 3.5. Quy chuẩn về cài đặt iOS (.ipa)

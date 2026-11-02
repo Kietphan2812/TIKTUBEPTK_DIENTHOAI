@@ -136,6 +136,27 @@ class AuthController extends ChangeNotifier {
     await _apply(session);
   }
 
+  Future<void> sendForgotPasswordOtp(String email) async {
+    await _api.sendForgotPasswordOtp(email);
+  }
+
+  Future<void> verifyOtp(String email, String otp) async {
+    await _api.verifyOtp(email, otp);
+  }
+
+  Future<void> resetPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  }) async {
+    final session = await _api.resetPassword(
+      email: email,
+      otp: otp,
+      newPassword: newPassword,
+    );
+    await _apply(session);
+  }
+
   Future<void> _apply(AuthSession session) async {
     _token = session.token;
     _profile = session.profile;

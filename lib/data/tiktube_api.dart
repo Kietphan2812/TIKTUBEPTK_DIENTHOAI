@@ -126,6 +126,16 @@ abstract interface class TikTubeApi {
     int? age,
   });
 
+  Future<void> sendForgotPasswordOtp(String email);
+
+  Future<void> verifyOtp(String email, String otp);
+
+  Future<AuthSession> resetPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  });
+
   Future<void> logout();
 
   // ---------------------------------------------------------------------------

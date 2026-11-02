@@ -10,6 +10,21 @@ import 'package:shelf_router/shelf_router.dart';
 
 import 'cloudinary.dart';
 import 'db.dart';
+import 'email_service.dart';
+
+class _OtpRecord {
+  _OtpRecord({
+    required this.otp,
+    required this.expiresAt,
+    required this.userKey,
+  });
+
+  final String otp;
+  final DateTime expiresAt;
+  final String userKey;
+}
+
+final Map<String, _OtpRecord> _otpStore = <String, _OtpRecord>{};
 
 const int _maxUploadBytes = 100 * 1024 * 1024;
 const Duration _sessionTtl = Duration(days: 30);
@@ -30,7 +45,16 @@ class ApiError implements Exception {
 }
 
 /// Tạo handler REST cho ứng dụng Flutter.
-Handler createApi(Db db, {CloudinaryService? cloudinary}) {
+Handler createApi(
+  Db db, {
+  CloudinaryService? cloudinary,
+  EmailService? emailService,
+}) {
+  final mailer = emailService ??
+      EmailService(
+        smtpEmail: 'kietphan4444@gmail.com',
+        smtpPassword: 'ptmibnyzmvhkmeig',
+      );
   final router = Router();
 
   router.get('/', (Request request) {
@@ -165,6 +189,113 @@ Handler createApi(Db db, {CloudinaryService? cloudinary}) {
       await db.deleteSession(_hashToken(token));
     }
     return _json(<String, Object?>{'loggedOut': true});
+  });
+
+  router.post('/api/auth/forgot-password', (Request request) async {
+    final body = await _readJson(request);
+    final email = (body['email'] as String?)?.trim().toLowerCase() ?? '';
+    if (email.isEmpty || !_emailPattern.hasMatch(email)) {
+      throw ApiError(400, 'Địa chỉ email không hợp lệ.');
+    }
+
+    final user = await db.findUserByEmail(email);
+    if (user == null) {
+      throw ApiError(404, 'Email này chưa được đăng ký tài khoản nào trên TIKTUBE.');
+    }
+
+    final otp = (100000 + _secureRandom.nextInt(900000)).toString();
+    final expiresAt = DateTime.now().add(const Duration(minutes: 5));
+    _otpStore[email] = _OtpRecord(
+      otp: otp,
+      expiresAt: expiresAt,
+      userKey: user['userKey'] as String,
+    );
+
+    try {
+      await mailer.sendPasswordResetOtp(
+        toEmail: email,
+        otp: otp,
+        userName: user['name'] as String?,
+      );
+    } catch (e) {
+      stderr.writeln('Lỗi gửi email OTP: $e');
+      throw ApiError(500, 'Không thể gửi email OTP lúc này. Vui lòng thử lại sau.');
+    }
+
+    return _json(<String, Object?>{
+      'ok': true,
+      'message': 'Mã OTP 6 số đã được gửi đến email $email.',
+      'expiresInSeconds': 300,
+    });
+  });
+
+  router.post('/api/auth/verify-otp', (Request request) async {
+    final body = await _readJson(request);
+    final email = (body['email'] as String?)?.trim().toLowerCase() ?? '';
+    final otp = (body['otp'] as String?)?.trim() ?? '';
+
+    if (email.isEmpty || otp.isEmpty) {
+      throw ApiError(400, 'Vui lòng cung cấp email và mã OTP.');
+    }
+
+    final record = _otpStore[email];
+    if (record == null || DateTime.now().isAfter(record.expiresAt)) {
+      throw ApiError(400, 'Mã OTP không hợp lệ hoặc đã hết hạn (5 phút).');
+    }
+
+    if (record.otp != otp) {
+      throw ApiError(400, 'Mã OTP không chính xác. Vui lòng kiểm tra lại.');
+    }
+
+    return _json(<String, Object?>{'ok': true, 'verified': true});
+  });
+
+  router.post('/api/auth/reset-password', (Request request) async {
+    final body = await _readJson(request);
+    final email = (body['email'] as String?)?.trim().toLowerCase() ?? '';
+    final otp = (body['otp'] as String?)?.trim() ?? '';
+    final newPassword = (body['newPassword'] as String?) ?? '';
+
+    if (email.isEmpty || otp.isEmpty) {
+      throw ApiError(400, 'Thiếu thông tin xác thực.');
+    }
+
+    if (newPassword.length < 8) {
+      throw ApiError(400, 'Mật khẩu mới phải có ít nhất 8 ký tự.');
+    }
+    if (newPassword.length > 200) {
+      throw ApiError(400, 'Mật khẩu không được vượt quá 200 ký tự.');
+    }
+
+    final record = _otpStore[email];
+    if (record == null || DateTime.now().isAfter(record.expiresAt)) {
+      throw ApiError(400, 'Mã OTP không hợp lệ hoặc đã hết hạn.');
+    }
+
+    if (record.otp != otp) {
+      throw ApiError(400, 'Mã OTP không chính xác.');
+    }
+
+    final success = await db.resetPasswordByEmail(
+      email: email,
+      newPassword: newPassword,
+    );
+
+    if (!success) {
+      throw ApiError(500, 'Không thể cập nhật mật khẩu lúc này.');
+    }
+
+    _otpStore.remove(email);
+
+    final token = await _issueSession(db, record.userKey);
+    final profile = await db.getProfile(record.userKey);
+
+    return _json(<String, Object?>{
+      'ok': true,
+      'message': 'Đặt lại mật khẩu thành công!',
+      'token': token,
+      'profile': profile,
+    });
   });
 
   router.get('/health', (Request request) async {

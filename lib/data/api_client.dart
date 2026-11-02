@@ -484,6 +484,42 @@ class ApiClient implements TikTubeApi {
   }
 
   @override
+  Future<void> sendForgotPasswordOtp(String email) async {
+    await _request(
+      'POST',
+      _uri('/api/auth/forgot-password'),
+      body: <String, Object?>{'email': email.trim()},
+    );
+  }
+
+  @override
+  Future<void> verifyOtp(String email, String otp) async {
+    await _request(
+      'POST',
+      _uri('/api/auth/verify-otp'),
+      body: <String, Object?>{'email': email.trim(), 'otp': otp.trim()},
+    );
+  }
+
+  @override
+  Future<AuthSession> resetPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  }) async {
+    final data = await _request(
+      'POST',
+      _uri('/api/auth/reset-password'),
+      body: <String, Object?>{
+        'email': email.trim(),
+        'otp': otp.trim(),
+        'newPassword': newPassword,
+      },
+    );
+    return AuthSession.fromJson(data);
+  }
+
+  @override
   Future<void> logout() async {
     try {
       if (_token != null && _token!.isNotEmpty) {
