@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import '../data/chat_service.dart';
@@ -71,6 +72,13 @@ class _CallOverlayState extends State<CallOverlay>
   bool _isCameraOff = false;
   bool _isSpeakerOn = true;
 
+  // Quản lý Camera thiết bị thật
+  CameraController? _cameraController;
+  List<CameraDescription> _availableCameras = <CameraDescription>[];
+  bool _isCameraInitialized = false;
+  bool _isSwitchingCamera = false;
+  int _selectedCameraIndex = 0;
+
   @override
   void initState() {
     super.initState();
@@ -92,6 +100,9 @@ class _CallOverlayState extends State<CallOverlay>
       Timer(const Duration(milliseconds: 3000), () {
         if (!mounted || _connected) return;
         setState(() => _connected = true);
+        if (widget.isVideo) {
+          unawaited(_initCamera());
+        }
         _startTimer();
       });
     }
@@ -102,12 +113,74 @@ class _CallOverlayState extends State<CallOverlay>
       if (type == 'answered') {
         if (!_connected) {
           setState(() => _connected = true);
+          if (widget.isVideo) {
+            unawaited(_initCamera());
+          }
           _startTimer();
         }
       } else if (type == 'ended' || type == 'rejected') {
         _hangup();
       }
     });
+
+    if (widget.isVideo && !widget.isIncoming) {
+      unawaited(_initCamera());
+    }
+  }
+
+  Future<void> _initCamera() async {
+    try {
+      _availableCameras = await availableCameras();
+      if (_availableCameras.isEmpty) return;
+
+      int frontIndex = _availableCameras.indexWhere(
+        (c) => c.lensDirection == CameraLensDirection.front,
+      );
+      _selectedCameraIndex = (frontIndex != -1) ? frontIndex : 0;
+      await _setupCameraController(_availableCameras[_selectedCameraIndex]);
+    } catch (e) {
+      debugPrint('[CallOverlay] Lỗi khởi tạo camera: $e');
+    }
+  }
+
+  Future<void> _setupCameraController(CameraDescription camera) async {
+    final prevController = _cameraController;
+    final controller = CameraController(
+      camera,
+      ResolutionPreset.medium,
+      enableAudio: true,
+      imageFormatGroup: ImageFormatGroup.jpeg,
+    );
+
+    try {
+      await controller.initialize();
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+      setState(() {
+        _cameraController = controller;
+        _isCameraInitialized = true;
+      });
+      await prevController?.dispose();
+    } catch (e) {
+      debugPrint('[CallOverlay] Lỗi setup camera controller: $e');
+      await controller.dispose();
+    }
+  }
+
+  Future<void> _switchCamera() async {
+    if (_availableCameras.length < 2 || _isSwitchingCamera) return;
+    setState(() => _isSwitchingCamera = true);
+    try {
+      _selectedCameraIndex =
+          (_selectedCameraIndex + 1) % _availableCameras.length;
+      await _setupCameraController(_availableCameras[_selectedCameraIndex]);
+    } finally {
+      if (mounted) {
+        setState(() => _isSwitchingCamera = false);
+      }
+    }
   }
 
   void _startTimer() {
@@ -121,6 +194,9 @@ class _CallOverlayState extends State<CallOverlay>
     unawaited(CallManager.instance.stopRingtone());
     ChatService.instance.answerCall(widget.friend.id);
     setState(() => _connected = true);
+    if (widget.isVideo && !_isCameraInitialized) {
+      unawaited(_initCamera());
+    }
     _startTimer();
   }
 
@@ -142,6 +218,7 @@ class _CallOverlayState extends State<CallOverlay>
     _pulseController.dispose();
     _callTimer?.cancel();
     _callEventsSub?.cancel();
+    _cameraController?.dispose();
     super.dispose();
   }
 
@@ -160,7 +237,7 @@ class _CallOverlayState extends State<CallOverlay>
       child: Stack(
         fit: StackFit.expand,
         children: <Widget>[
-          // Nền cuộc gọi: video nền hoặc gradient ZaloChat mượt mà
+          // Nền cuộc gọi: Luồng Camera thực tế hoặc gradient thoại mượt mà
           if (isVideo && _connected)
             _buildVideoBackground()
           else
@@ -172,7 +249,9 @@ class _CallOverlayState extends State<CallOverlay>
               children: <Widget>[
                 const SizedBox(height: 36),
                 Text(
-                  widget.isVideo ? 'CUỘC GỌI VIDEO ZALOCHAT' : 'CUỘC GỌI THOẠI TIKTUBE',
+                  widget.isVideo
+                      ? 'CUỘC GỌI VIDEO TIKTUBE'
+                      : 'CUỘC GỌI THOẠI TIKTUBE',
                   style: const TextStyle(
                     color: Colors.white70,
                     fontSize: 12,
@@ -203,6 +282,48 @@ class _CallOverlayState extends State<CallOverlay>
                     fontWeight: _connected ? FontWeight.w700 : FontWeight.w500,
                   ),
                 ),
+                const SizedBox(height: 8),
+
+                // Trạng thái mic / camera thực tế
+                if (_connected)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black45,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Icon(
+                          _isMuted
+                              ? Icons.mic_off_rounded
+                              : Icons.mic_rounded,
+                          size: 14,
+                          color: _isMuted
+                              ? const Color(0xFFFF2D45)
+                              : const Color(0xFF4CAF50),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _isMuted
+                              ? 'Micro đã tắt'
+                              : (_isSpeakerOn
+                                  ? 'Loa ngoài • Micro mở'
+                                  : 'Loa trong • Micro mở'),
+                          style: TextStyle(
+                            color: _isMuted
+                                ? const Color(0xFFFF2D45)
+                                : Colors.white70,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
                 const Spacer(),
 
                 // Avatar với hiệu ứng sóng âm (Pulse Ring) nếu không phải video
@@ -219,7 +340,8 @@ class _CallOverlayState extends State<CallOverlay>
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               color: const Color(0xFFFF2D45).withValues(
-                                alpha: (1.3 - _pulseAnimation.value).clamp(0.0, 0.5),
+                                alpha: (1.3 - _pulseAnimation.value)
+                                    .clamp(0.0, 0.5),
                               ),
                             ),
                           ),
@@ -258,7 +380,7 @@ class _CallOverlayState extends State<CallOverlay>
                 else
                   _buildCallControls(),
 
-                const SizedBox(height: 48),
+                const SizedBox(height: 32),
               ],
             ),
           ),
@@ -287,36 +409,141 @@ class _CallOverlayState extends State<CallOverlay>
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
-        // Giả lập khung hình video người nhận
-        Container(
-          color: const Color(0xFF1A1A2E),
-          alignment: Alignment.center,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Icon(Icons.videocam_rounded, size: 64, color: Colors.white.withValues(alpha: 0.3)),
-              const SizedBox(height: 10),
-              Text(
-                'Camera HD: ${widget.friend.name}',
-                style: const TextStyle(color: Colors.white70, fontSize: 14),
+        // Luồng Camera thực tế của thiết bị
+        if (_cameraController != null &&
+            _isCameraInitialized &&
+            !_isCameraOff)
+          ClipRect(
+            child: OverflowBox(
+              alignment: Alignment.center,
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: _cameraController!.value.previewSize?.height ?? 1,
+                  height: _cameraController!.value.previewSize?.width ?? 1,
+                  child: CameraPreview(_cameraController!),
+                ),
               ),
-            ],
+            ),
+          )
+        else
+          Container(
+            color: const Color(0xFF0F172A),
+            alignment: Alignment.center,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Icon(
+                  _isCameraOff
+                      ? Icons.videocam_off_rounded
+                      : Icons.camera_enhance_rounded,
+                  size: 64,
+                  color: Colors.white38,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  _isCameraOff
+                      ? 'Camera đã tắt'
+                      : 'Đang kết nối camera thiết bị...',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+        // Lớp gradient mỏng để thông tin và các nút luôn sắc nét
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: <Color>[
+                Colors.black.withValues(alpha: 0.65),
+                Colors.transparent,
+                Colors.transparent,
+                Colors.black.withValues(alpha: 0.8),
+              ],
+              stops: const [0.0, 0.28, 0.65, 1.0],
+            ),
           ),
         ),
-        // Khung hình camera bản thân ở góc
+
+        // Khung hình thu nhỏ của người nhận (Góc trên bên phải)
         Positioned(
           top: 60,
           right: 20,
           child: Container(
-            width: 100,
-            height: 140,
+            width: 110,
+            height: 155,
             decoration: BoxDecoration(
-              color: Colors.black54,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white70, width: 2),
+              color: const Color(0xFF1E293B).withValues(alpha: 0.9),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: const Color(0xFFFF2D45).withValues(alpha: 0.8),
+                width: 2,
+              ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Colors.black45,
+                  blurRadius: 10,
+                  offset: Offset(0, 4),
+                ),
+              ],
             ),
-            alignment: Alignment.center,
-            child: const Icon(Icons.person, color: Colors.white60, size: 40),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                CircleAvatar(
+                  radius: 26,
+                  backgroundColor: const Color(0xFFFF2D45),
+                  child: Text(
+                    widget.friend.name.isNotEmpty
+                        ? widget.friend.name[0].toUpperCase()
+                        : '?',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Text(
+                    widget.friend.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Icon(Icons.mic, size: 12, color: Color(0xFF4CAF50)),
+                    SizedBox(width: 4),
+                    Text(
+                      'HD Audio',
+                      style: TextStyle(
+                        color: Color(0xFF4CAF50),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ],
@@ -325,7 +552,7 @@ class _CallOverlayState extends State<CallOverlay>
 
   Widget _buildCallControls() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: <Widget>[
@@ -340,15 +567,28 @@ class _CallOverlayState extends State<CallOverlay>
           // Nút Camera (nếu là video call)
           if (widget.isVideo)
             _CircleButton(
-              icon: _isCameraOff ? Icons.videocam_off_rounded : Icons.videocam_rounded,
+              icon: _isCameraOff
+                  ? Icons.videocam_off_rounded
+                  : Icons.videocam_rounded,
               label: _isCameraOff ? 'Bật cam' : 'Tắt cam',
               active: _isCameraOff,
               onTap: () => setState(() => _isCameraOff = !_isCameraOff),
             ),
 
+          // Nút Đổi Camera trước / sau (nếu máy có từ 2 camera)
+          if (widget.isVideo && _availableCameras.length > 1)
+            _CircleButton(
+              icon: Icons.flip_camera_ios_rounded,
+              label: 'Đổi cam',
+              active: false,
+              onTap: _switchCamera,
+            ),
+
           // Nút Loa ngoài
           _CircleButton(
-            icon: _isSpeakerOn ? Icons.volume_up_rounded : Icons.volume_off_rounded,
+            icon: _isSpeakerOn
+                ? Icons.volume_up_rounded
+                : Icons.volume_off_rounded,
             label: _isSpeakerOn ? 'Loa ngoài' : 'Loa trong',
             active: _isSpeakerOn,
             onTap: () => setState(() => _isSpeakerOn = !_isSpeakerOn),
@@ -453,4 +693,3 @@ class _CircleButton extends StatelessWidget {
     );
   }
 }
-

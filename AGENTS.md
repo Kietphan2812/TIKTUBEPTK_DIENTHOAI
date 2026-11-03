@@ -217,6 +217,19 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
 
 ---
 
+### 3.16. Camera thiết bị thật & Điều khiển cuộc gọi video (Device Camera Preview & Video Call Controls)
+- **Kích hoạt Camera trước thiết bị thật (`camera: ^0.12.2`):**
+  - Khi vào cuộc gọi video hoặc bấm nghe máy, hệ thống tự động quét danh sách camera (`availableCameras()`), ưu tiên chọn camera trước (`CameraLensDirection.front`) và khởi tạo `CameraController` với độ phân giải Medium kèm luồng âm thanh `enableAudio: true`.
+  - Luồng video camera thật hiển thị trực tiếp toàn màn hình (`CameraPreview`) với tỷ lệ vừa vặn không méo hình, giúp người dùng nhìn thấy khuôn mặt và khung cảnh thực tế của mình khi gọi video.
+- **Bộ điều khiển cuộc gọi nâng cao:**
+  - Nút **[ Bật/Tắt cam ]**: Chuyển đổi giữa chế độ xem camera trực tiếp và chế độ ẩn camera với placeholder thông tin.
+  - Nút **[ Đổi cam ]**: Lật camera trước / sau nếu máy có nhiều hơn 1 camera.
+  - Nút **[ Bật/Tắt mic ]**: Trạng thái micro hiển thị rõ ràng trên huy hiệu trạng thái (Micro mở / Micro đã tắt).
+  - Nút **[ Loa ngoài / Loa trong ]**: Chuyển đổi linh hoạt giữa chế độ loa ngoài và loa trong.
+  - Tự động giải phóng phần cứng camera (`_cameraController?.dispose()`) khi gác máy hoặc đóng overlay.
+
+---
+
 ### 3.5. Quy chuẩn về cài đặt iOS (.ipa)
 - Định dạng `.apk` chỉ cài được trên Android.
 - Định dạng `.ipa` của iOS KHÔNG thể tạo bằng cách đổi tên tệp hay chỉnh sửa file thủ công; bắt buộc phải build trên macOS có Xcode và có chứng chỉ/tài khoản Apple Developer (hoặc dịch vụ CI/CD macOS như GitHub Actions / Codemagic).
