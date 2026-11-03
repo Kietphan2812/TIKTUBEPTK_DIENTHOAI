@@ -660,12 +660,16 @@ class ChatService extends ChangeNotifier {
           });
 
           final caller = map['caller'];
-          final callerName = (caller is Map ? caller['username'] : null)?.toString() ?? 'Bạn bè';
+          final callerId = (caller is Map ? caller['id'] : null)?.toString() ?? '';
+          final callerName = (caller is Map ? caller['name'] ?? caller['username'] : null)?.toString() ?? 'Bạn bè';
           final callerPhone = (caller is Map ? caller['phone'] : null)?.toString() ?? '';
-          final isVideo = map['type'] == 'video';
+          final callerAvatar = (caller is Map ? caller['avatar'] : null)?.toString() ?? '';
+          final isVideo = (map['type'] == 'video') || (map['isVideo'] == true);
           unawaited(PushNotificationService.instance.showIncomingCallNotification(
+            callerId: callerId,
             callerName: callerName,
             callerPhone: callerPhone,
+            callerAvatar: callerAvatar,
             isVideo: isVideo,
           ));
         }
@@ -682,10 +686,12 @@ class ChatService extends ChangeNotifier {
 
       _socket!.on('call:ended', (data) {
         _callEventsController.add({'type': 'ended'});
+        unawaited(PushNotificationService.instance.cancelCallNotification());
       });
 
       _socket!.on('call:rejected', (data) {
         _callEventsController.add({'type': 'rejected'});
+        unawaited(PushNotificationService.instance.cancelCallNotification());
       });
 
       _socket!.connect();

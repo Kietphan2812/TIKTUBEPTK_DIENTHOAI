@@ -18,12 +18,18 @@ class CallOverlay extends StatefulWidget {
   final bool isIncoming;
   final VoidCallback? onClose;
 
+  static bool _isOpen = false;
+  static bool get isCallOpen => _isOpen;
+
   static void startCall(
     BuildContext context, {
     required Friend friend,
     required bool isVideo,
     bool isIncoming = false,
   }) {
+    if (_isOpen) return;
+    _isOpen = true;
+
     showGeneralDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -34,10 +40,17 @@ class CallOverlay extends StatefulWidget {
           friend: friend,
           isVideo: isVideo,
           isIncoming: isIncoming,
-          onClose: () => Navigator.of(ctx).pop(),
+          onClose: () {
+            _isOpen = false;
+            if (Navigator.of(ctx).canPop()) {
+              Navigator.of(ctx).pop();
+            }
+          },
         );
       },
-    );
+    ).then((_) {
+      _isOpen = false;
+    });
   }
 
   @override

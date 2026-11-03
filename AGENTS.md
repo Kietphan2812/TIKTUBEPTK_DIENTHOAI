@@ -189,6 +189,19 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
 
 ---
 
+### 3.14. Tự động chuyển màn hình cuộc gọi toàn cục & Nút thao tác trên thông báo (Global Call Manager)
+- **Quản lý cuộc gọi toàn cục (`CallManager`):**
+  - Gắn `GlobalKey<NavigatorState>` (`CallManager.navigatorKey`) vào root `MaterialApp`.
+  - Lắng nghe `ChatService.callEvents`: bất kể người dùng đang ở đâu trong ứng dụng (Trang chủ, xem video 16:9, tìm kiếm, v.v.), khi có cuộc gọi đến màn hình lập tức chuyển ngay sang giao diện cuộc gọi (`CallOverlay`).
+  - Cờ `CallOverlay.isCallOpen` ngăn chặn việc mở chồng chéo nhiều popup gọi cùng lúc.
+- **Tương tác thông báo Heads-Up (Android Action Buttons):**
+  - Thêm 2 nút bấm trực tiếp trên banner thông báo: **[ Trả lời 🟢 ]** và **[ Từ chối 🔴 ]**.
+  - Khi bấm vào banner thông báo hoặc bấm nút **[ Trả lời ]**: ứng dụng lập tức mở lên và chuyển thẳng vào màn hình cuộc gọi (`CallOverlay`). Nếu bấm Trả lời, tự động kết nối cuộc gọi.
+  - Khi bấm **[ Từ chối ]**: tự động phát tín hiệu `call:reject` và huỷ thông báo ngay lập tức mà không cần mở app.
+  - Bổ sung quyền Android: `SYSTEM_ALERT_WINDOW`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_PHONE_CALL`, và cấu hình `setShowWhenLocked(true)`, `setTurnScreenOn(true)` trong `MainActivity.kt`.
+
+---
+
 ### 3.5. Quy chuẩn về cài đặt iOS (.ipa)
 - Định dạng `.apk` chỉ cài được trên Android.
 - Định dạng `.ipa` của iOS KHÔNG thể tạo bằng cách đổi tên tệp hay chỉnh sửa file thủ công; bắt buộc phải build trên macOS có Xcode và có chứng chỉ/tài khoản Apple Developer (hoặc dịch vụ CI/CD macOS như GitHub Actions / Codemagic).

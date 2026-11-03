@@ -1,9 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+import '../data/chat_service.dart';
 import '../data/user_preferences.dart';
+import 'call_manager.dart';
 
 /// Hàm xử lý thông báo chạy ngầm khi ứng dụng bị đóng hoặc ở nền (Background/Terminated).
 /// Bắt buộc phải là hàm top-level và có annotation @pragma('vm:entry-point').
@@ -17,6 +22,8 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 class PushNotificationService {
   PushNotificationService._();
   static final PushNotificationService instance = PushNotificationService._();
+
+  static const int callNotificationId = 88888;
 
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
@@ -82,7 +89,7 @@ class PushNotificationService {
       await _localNotifications.initialize(
         settings: initSettings,
         onDidReceiveNotificationResponse: (response) {
-          // Người dùng bấm vào thông báo
+          _onNotificationResponse(response);
         },
       );
 
@@ -94,6 +101,18 @@ class PushNotificationService {
         await androidImplementation.createNotificationChannel(_messagesChannel);
         await androidImplementation.createNotificationChannel(_callsChannel);
         await androidImplementation.requestNotificationsPermission();
+      }
+
+      // Kiểm tra xem ứng dụng có được mở từ việc nhấn vào thông báo hay không
+      final launchDetails =
+          await _localNotifications.getNotificationAppLaunchDetails();
+      if (launchDetails != null && launchDetails.didNotificationLaunchApp) {
+        final resp = launchDetails.notificationResponse;
+        if (resp != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _onNotificationResponse(resp);
+          });
+        }
       }
 
       // Xin quyền nhận thông báo từ Firebase
@@ -132,6 +151,43 @@ class PushNotificationService {
     }
   }
 
+  void _onNotificationResponse(NotificationResponse response) {
+    final payloadStr = response.payload;
+    if (payloadStr == null || payloadStr.isEmpty) return;
+    try {
+      final data = jsonDecode(payloadStr) as Map<String, dynamic>;
+      if (data['type'] == 'call') {
+        final callerId = data['callerId']?.toString() ?? '';
+        final callerName = data['callerName']?.toString() ?? 'Bạn bè';
+        final callerPhone = data['callerPhone']?.toString() ?? '';
+        final callerAvatar = data['callerAvatar']?.toString() ?? '';
+        final isVideo = data['isVideo'] == true;
+
+        if (response.actionId == 'action_decline') {
+          // Bấm Từ chối trực tiếp từ thông báo
+          ChatService.instance.rejectCall(callerId);
+          unawaited(cancelCallNotification());
+          return;
+        }
+
+        // Bấm Trả lời hoặc bấm thẳng vào banner thông báo -> Chuyển ngay vào trang gọi!
+        CallManager.instance.showIncomingCall(
+          callerId: callerId,
+          callerName: callerName,
+          callerPhone: callerPhone,
+          callerAvatar: callerAvatar,
+          isVideo: isVideo,
+        );
+
+        if (response.actionId == 'action_answer') {
+          ChatService.instance.answerCall(callerId);
+        }
+      }
+    } catch (e) {
+      debugPrint('Lỗi xử lý phản hồi thông báo: $e');
+    }
+  }
+
   void _handleForegroundMessage(RemoteMessage message) {
     final notification = message.notification;
     final data = message.data;
@@ -141,10 +197,11 @@ class PushNotificationService {
     final body = notification?.body ?? (isCall ? 'Bạn có cuộc gọi đến trên TIKTUBE' : 'Bạn nhận được tin nhắn mới');
 
     _showNotification(
-      id: message.hashCode,
+      id: isCall ? callNotificationId : message.hashCode,
       title: title,
       body: body,
       isCall: isCall,
+      payload: jsonEncode(data),
     );
   }
 
@@ -153,8 +210,26 @@ class PushNotificationService {
     required String title,
     required String body,
     required bool isCall,
+    String? payload,
   }) async {
     final channel = isCall ? _callsChannel : _messagesChannel;
+
+    final actions = isCall
+        ? <AndroidNotificationAction>[
+            const AndroidNotificationAction(
+              'action_answer',
+              'Trả lời',
+              showsUserInterface: true,
+              cancelNotification: true,
+            ),
+            const AndroidNotificationAction(
+              'action_decline',
+              'Từ chối',
+              showsUserInterface: false,
+              cancelNotification: true,
+            ),
+          ]
+        : null;
 
     final androidDetails = AndroidNotificationDetails(
       channel.id,
@@ -165,6 +240,9 @@ class PushNotificationService {
       fullScreenIntent: isCall,
       category: isCall ? AndroidNotificationCategory.call : AndroidNotificationCategory.message,
       icon: '@mipmap/ic_launcher',
+      ongoing: isCall,
+      autoCancel: !isCall,
+      actions: actions,
     );
 
     final details = NotificationDetails(
@@ -181,24 +259,43 @@ class PushNotificationService {
       title: title,
       body: body,
       notificationDetails: details,
+      payload: payload,
     );
   }
 
-  /// Hiển thị thông báo cuộc gọi đến dạng Heads-up banner và rung chuông
+  /// Hiển thị thông báo cuộc gọi đến dạng Heads-up banner và rung chuông kèm nút bấm thao tác
   Future<void> showIncomingCallNotification({
+    required String callerId,
     required String callerName,
     required String callerPhone,
+    required String callerAvatar,
     required bool isVideo,
   }) async {
     final title = 'Cuộc gọi ${isVideo ? "Video" : "thoại"} TIKTUBE';
     final body = '$callerName ($callerPhone) đang gọi cho bạn...';
+    final payload = jsonEncode({
+      'type': 'call',
+      'callerId': callerId,
+      'callerName': callerName,
+      'callerPhone': callerPhone,
+      'callerAvatar': callerAvatar,
+      'isVideo': isVideo,
+    });
 
     await _showNotification(
-      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      id: callNotificationId,
       title: title,
       body: body,
       isCall: true,
+      payload: payload,
     );
+  }
+
+  /// Hủy thông báo cuộc gọi đến khi cuộc gọi kết thúc hoặc bị hủy
+  Future<void> cancelCallNotification() async {
+    try {
+      await _localNotifications.cancel(id: callNotificationId);
+    } catch (_) {}
   }
 
   /// Hiển thị thông báo tin nhắn mới

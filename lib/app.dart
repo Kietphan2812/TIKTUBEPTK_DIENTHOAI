@@ -10,6 +10,7 @@ import 'data/api_client.dart';
 import 'data/tiktube_api.dart';
 import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
+import 'services/call_manager.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_controller.dart';
 
@@ -44,6 +45,7 @@ class _PtkTubeAppState extends State<PtkTubeApp> {
   void initState() {
     super.initState();
     _api = widget.api ?? ApiClient();
+    CallManager.instance.init();
     if (widget.authRequired) {
       _auth = AuthController(_api, store: widget.authStore);
       unawaited(_auth!.restore());
@@ -67,6 +69,7 @@ class _PtkTubeAppState extends State<PtkTubeApp> {
           return ThemeScope(
             notifier: _theme,
             child: MaterialApp(
+              navigatorKey: CallManager.navigatorKey,
               title: 'TIKTUBE - Xem & Chia sẻ Video - Đăng Video',
               debugShowCheckedModeBanner: false,
               theme: AppTheme.light(),
@@ -96,7 +99,7 @@ class _PtkTubeAppState extends State<PtkTubeApp> {
           child: ThemeScope(
             notifier: _theme,
             child: MaterialApp(
-              key: ValueKey<AuthStatus>(auth.status),
+              navigatorKey: CallManager.navigatorKey,
               title: 'TIKTUBE - Xem & Chia sẻ Video - Đăng Video',
               debugShowCheckedModeBanner: false,
               theme: AppTheme.light(),
@@ -106,7 +109,10 @@ class _PtkTubeAppState extends State<PtkTubeApp> {
                 child,
                 dark: auth.status != AuthStatus.authenticated || _theme.isDark,
               ),
-              home: home,
+              home: KeyedSubtree(
+                key: ValueKey<AuthStatus>(auth.status),
+                child: home,
+              ),
             ),
           ),
         );
