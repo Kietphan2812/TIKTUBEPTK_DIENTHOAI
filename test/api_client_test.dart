@@ -32,6 +32,29 @@ void main() {
     expect(video.isLive, isTrue);
   });
 
+  test('Video phân biệt chính xác video 18+ và video cho trẻ em', () {
+    final kidsVideo = Video.fromJson(<String, dynamic>{
+      'id': 'v-kids',
+      'title': 'Hoạt hình thiếu nhi',
+      'channel': 'Kênh Thiếu Nhi',
+      'views': 100,
+      'isKidsOnly': true,
+    });
+    expect(kidsVideo.isKidsOnly, isTrue);
+    expect(kidsVideo.is18Plus, isFalse);
+
+    final adultVideo = Video.fromJson(<String, dynamic>{
+      'id': 'v-adult',
+      'title': 'Phim tài liệu chiến tranh [18+]',
+      'channel': 'Lịch Sử',
+      'views': 500,
+      'tags': <String>['lichsu', '18+'],
+      'isKidsOnly': false,
+    });
+    expect(adultVideo.isKidsOnly, isFalse);
+    expect(adultVideo.is18Plus, isTrue);
+  });
+
   test('ApiClient.fetchVideos gọi đúng endpoint và phân tích JSON', () async {
     final client = MockClient((http.Request request) async {
       expect(request.method, 'GET');

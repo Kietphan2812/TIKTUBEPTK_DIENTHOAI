@@ -30,6 +30,7 @@ class Video {
     this.recommendationReason = '',
     this.liked = false,
     this.saved = false,
+    this.isKidsOnly = true,
   });
 
   final String id;
@@ -77,6 +78,11 @@ class Video {
   final bool liked;
   final bool saved;
 
+  /// Phân loại độ tuổi: `true` là dành cho trẻ em, `false` là giới hạn trên 18 tuổi.
+  final bool isKidsOnly;
+
+  bool get is18Plus => !isKidsOnly;
+
   String get recommendationLabel {
     switch (recommendationReason) {
       case 'subscription':
@@ -111,6 +117,27 @@ class Video {
         .whereType<Color>()
         .toList();
     final rawTags = json['tags'] as List<dynamic>? ?? const <dynamic>[];
+    final tagsList = rawTags.map((value) => value.toString()).toList();
+    final has18Tag = tagsList.any((t) {
+      final s = t.toLowerCase().replaceAll(' ', '');
+      return s == '18+' || s == '#18+' || s == '18plus' || s == '18' || s == 'nguoilon';
+    });
+    final titleDesc = '${json['title']} ${json['description']}'.toLowerCase();
+    final has18Text = titleDesc.contains('[18+]') ||
+        titleDesc.contains('(18+)') ||
+        titleDesc.contains('#18+');
+
+    final rawKids = json['isKidsOnly'] ?? json['danh_cho_tre_em'] ?? json['kidsOnly'];
+    bool isKids = true;
+    if (rawKids != null) {
+      isKids = rawKids == true || rawKids.toString() == 'true' || rawKids.toString() == '1';
+    } else if (json['age'] != null || json['age_rating'] != null) {
+      final ageStr = (json['age'] ?? json['age_rating']).toString();
+      isKids = ageStr != '18';
+    }
+    if (has18Tag || has18Text) {
+      isKids = false;
+    }
 
     return Video(
       id: json['id']?.toString() ?? '',
@@ -132,7 +159,7 @@ class Video {
       commentCount: (json['commentCount'] as num?)?.toInt() ?? 0,
       videoUrl: _emptyToNull(json['videoUrl']?.toString()),
       thumbnailUrl: _emptyToNull(json['thumbnailUrl']?.toString()),
-      tags: rawTags.map((value) => value.toString()).toList(),
+      tags: tagsList,
       channelId: json['channelId']?.toString() ?? '',
       subscriberCount: (json['subscriberCount'] as num?)?.toInt() ?? 0,
       subscribed: json['subscribed'] as bool? ?? false,
@@ -144,6 +171,7 @@ class Video {
       recommendationReason: json['recommendationReason']?.toString() ?? '',
       liked: json['liked'] as bool? ?? false,
       saved: json['saved'] as bool? ?? false,
+      isKidsOnly: isKids,
     );
   }
 
@@ -159,6 +187,7 @@ class Video {
     String? recommendationReason,
     bool? liked,
     bool? saved,
+    bool? isKidsOnly,
   }) {
     return Video(
       id: id,
@@ -188,6 +217,7 @@ class Video {
       recommendationReason: recommendationReason ?? this.recommendationReason,
       liked: liked ?? this.liked,
       saved: saved ?? this.saved,
+      isKidsOnly: isKidsOnly ?? this.isKidsOnly,
     );
   }
 

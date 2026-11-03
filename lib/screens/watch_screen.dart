@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'account_screen.dart';
+import 'auth_screen.dart';
 import 'chat_screen.dart';
 
 import '../auth/auth_scope.dart';
@@ -445,8 +447,20 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                   final bool wide = constraints.maxWidth >= 900;
                   final bool compact = constraints.maxWidth < 700;
                   final double pad = compact ? 12 : 20;
+                  final auth = AuthScope.maybeOf(context);
+                  final profile = auth?.profile;
+                  final bool isLoggedIn = auth?.isLoggedIn ?? false;
+                  final int? userAge = profile?.age;
+                  final bool is18Allowed =
+                      isLoggedIn && userAge != null && userAge >= 18;
+                  final bool isBlockedByAge =
+                      widget.video.is18Plus && !is18Allowed;
 
                   final Widget main = _MainColumn(
+                    isBlockedByAge: isBlockedByAge,
+                    isLoggedIn: isLoggedIn,
+                    userAge: userAge,
+                    api: widget.api,
                     video: widget.video,
                     subscribed: _subscribed,
                     subscriberCount: _subscriberCount,
@@ -533,6 +547,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 class _MainColumn extends StatelessWidget {
   const _MainColumn({
     required this.video,
+    required this.isBlockedByAge,
+    required this.isLoggedIn,
+    required this.userAge,
+    required this.api,
     required this.subscribed,
     required this.subscriberCount,
     required this.liked,
@@ -561,6 +579,10 @@ class _MainColumn extends StatelessWidget {
   });
 
   final Video video;
+  final bool isBlockedByAge;
+  final bool isLoggedIn;
+  final int? userAge;
+  final TikTubeApi api;
   final bool subscribed;
   final int subscriberCount;
   final bool liked;
@@ -603,60 +625,118 @@ class _MainColumn extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: <Widget>[
-                VideoSurface(video: video, onProgress: onProgress),
-                if (!video.isPlayable)
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: Container(
-                        color: Colors.black.withValues(alpha: 0.42),
-                        alignment: Alignment.center,
-                        padding: const EdgeInsets.all(20),
-                        child: const Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            Icon(
-                              Icons.cloud_off_rounded,
-                              color: Colors.white,
-                              size: 34,
-                            ),
-                            SizedBox(height: 10),
-                            Text(
-                              'Video chưa có file Cloudinary',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
+                if (isBlockedByAge)
+                  _AgeGateCinemaBox(
+                    isLoggedIn: isLoggedIn,
+                    userAge: userAge,
+                    compact: compact,
+                    onLogin: () {
+                      final auth = AuthScope.maybeOf(context);
+                      if (auth != null) {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => AuthScreen(controller: auth),
+                          ),
+                        );
+                      }
+                    },
+                    onUpdateAge: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => AccountScreen(api: api),
+                        ),
+                      );
+                    },
+                    onBack: () => Navigator.of(context).maybePop(),
+                  )
+                else ...<Widget>[
+                  VideoSurface(video: video, onProgress: onProgress),
+                  if (!video.isPlayable)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: Container(
+                          color: Colors.black.withValues(alpha: 0.42),
+                          alignment: Alignment.center,
+                          padding: const EdgeInsets.all(20),
+                          child: const Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              Icon(
+                                Icons.cloud_off_rounded,
                                 color: Colors.white,
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w700,
+                                size: 34,
                               ),
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              'Hãy tải video mới để phát trực tiếp.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 11,
+                              SizedBox(height: 10),
+                              Text(
+                                'Video chưa có file Cloudinary',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
-                            ),
-                          ],
+                              SizedBox(height: 4),
+                              Text(
+                                'Hãy tải video mới để phát trực tiếp.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
+                ],
               ],
             ),
           ),
         ),
         SizedBox(height: compact ? 12 : 14),
-        Text(
-          video.title,
-          style: TextStyle(
-            fontSize: compact ? 17.5 : 19,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.3,
-            color: p.textPrimary,
-            height: 1.3,
-          ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            if (video.is18Plus)
+              Container(
+                margin: const EdgeInsets.only(top: 2, right: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE50914),
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Icon(Icons.no_adult_content, size: 12, color: Colors.white),
+                    SizedBox(width: 3),
+                    Text(
+                      '18+',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            Expanded(
+              child: Text(
+                video.title,
+                style: TextStyle(
+                  fontSize: compact ? 17.5 : 19,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.3,
+                  color: p.textPrimary,
+                  height: 1.3,
+                ),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         // Thanh Kênh & Nút Hành động kiểu YouTube
@@ -1623,6 +1703,170 @@ class _RelatedTileState extends State<_RelatedTile> {
                     ),
                   ],
                 ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+class _AgeGateCinemaBox extends StatelessWidget {
+  const _AgeGateCinemaBox({
+    required this.isLoggedIn,
+    required this.userAge,
+    required this.compact,
+    required this.onLogin,
+    required this.onUpdateAge,
+    required this.onBack,
+  });
+
+  final bool isLoggedIn;
+  final int? userAge;
+  final bool compact;
+  final VoidCallback onLogin;
+  final VoidCallback onUpdateAge;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    String title;
+    String subtitle;
+    String actionLabel;
+    IconData actionIcon;
+    VoidCallback actionOnTap;
+
+    if (!isLoggedIn) {
+      title = 'Nội dung giới hạn độ tuổi (18+)';
+      subtitle =
+          'Video này không dành cho trẻ em. Vui lòng đăng nhập tài khoản có xác nhận độ tuổi từ 18 trở lên để mở khóa phát video.';
+      actionLabel = 'Đăng nhập để xem';
+      actionIcon = Icons.login_rounded;
+      actionOnTap = onLogin;
+    } else if (userAge != null && userAge! < 18) {
+      title = 'Video bị khóa: Giới hạn độ tuổi 18+';
+      subtitle =
+          'Video này chứa nội dung dành cho người từ 18 tuổi trở lên. Tài khoản của bạn ( tuổi) chưa đủ điều kiện để truy cập nội dung này.';
+      actionLabel = 'Quay lại trang chủ';
+      actionIcon = Icons.arrow_back_rounded;
+      actionOnTap = onBack;
+    } else {
+      title = 'Yêu cầu xác nhận độ tuổi (18+)';
+      subtitle =
+          'Video này được gắn nhãn 18+. Tài khoản của bạn chưa cập nhật độ tuổi trong hồ sơ. Vui lòng cập nhật để tiếp tục xem.';
+      actionLabel = 'Cập nhật độ tuổi';
+      actionIcon = Icons.badge_outlined;
+      actionOnTap = onUpdateAge;
+    }
+
+    return Container(
+      color: const Color(0xFF0D0F14),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 16 : 32,
+        vertical: compact ? 14 : 20,
+      ),
+      child: Center(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Container(
+                width: compact ? 46 : 56,
+                height: compact ? 46 : 56,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFFE50914).withValues(alpha: 0.18),
+                  border: Border.all(
+                    color: const Color(0xFFE50914),
+                    width: 2,
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    '18+',
+                    style: TextStyle(
+                      color: const Color(0xFFE50914),
+                      fontWeight: FontWeight.w900,
+                      fontSize: compact ? 15 : 18,
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(height: compact ? 8 : 12),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: compact ? 14 : 16,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 6),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 520),
+                child: Text(
+                  subtitle,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.72),
+                    fontSize: compact ? 11 : 12.5,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+              SizedBox(height: compact ? 12 : 16),
+              Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                alignment: WrapAlignment.center,
+                children: <Widget>[
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFE50914),
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: compact ? 14 : 18,
+                        vertical: compact ? 8 : 11,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                    ),
+                    onPressed: actionOnTap,
+                    icon: Icon(actionIcon, size: compact ? 15 : 17),
+                    label: Text(
+                      actionLabel,
+                      style: TextStyle(
+                        fontSize: compact ? 12 : 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  if (actionOnTap != onBack)
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white70,
+                        side: const BorderSide(color: Colors.white24),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: compact ? 12 : 16,
+                          vertical: compact ? 8 : 11,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                      ),
+                      onPressed: onBack,
+                      icon: Icon(Icons.arrow_back_rounded,
+                          size: compact ? 14 : 16),
+                      label: Text(
+                        'Quay lại',
+                        style: TextStyle(fontSize: compact ? 12 : 13),
+                      ),
+                    ),
+                ],
               ),
             ],
           ),

@@ -193,12 +193,17 @@ class _UploadScreenState extends State<UploadScreen> {
       if (mounted && _uploading) setState(() {});
     });
 
+    final List<String> uploadTags = List<String>.of(_tags);
+    if (!_kidsOnly && !uploadTags.contains('18+')) {
+      uploadTags.add('18+');
+    }
+
     try {
       final video = await _api.uploadVideo(
         title: _title.text.trim(),
         description: _description.text.trim(),
         category: _category,
-        tags: _tags,
+        tags: uploadTags,
         kidsOnly: _kidsOnly,
         bytes: _bytes!,
         filename: _file!.name,

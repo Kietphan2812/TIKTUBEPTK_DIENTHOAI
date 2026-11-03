@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
+import '../auth/auth_scope.dart';
 import '../models/video.dart';
 import 'channel_avatar.dart';
 import 'video_surface.dart';
@@ -55,6 +56,15 @@ class _QuickWatchPageState extends State<QuickWatchPage> {
 
   String? get _url => widget.video.videoUrl;
 
+  bool get _is18Blocked {
+    if (!widget.video.is18Plus) return false;
+    final auth = AuthScope.maybeOf(context);
+    final bool isLoggedIn = auth?.isLoggedIn ?? false;
+    final int? userAge = auth?.profile?.age;
+    final bool is18Allowed = isLoggedIn && userAge != null && userAge >= 18;
+    return !is18Allowed;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -94,6 +104,7 @@ class _QuickWatchPageState extends State<QuickWatchPage> {
   Future<void> _initialize() async {
     final String? url = _url;
     if (url == null || url.trim().isEmpty) return;
+    if (_is18Blocked) return;
 
     final controller = VideoPlayerController.networkUrl(
       Uri.parse(url),
@@ -140,6 +151,7 @@ class _QuickWatchPageState extends State<QuickWatchPage> {
   }
 
   void _play() {
+    if (_is18Blocked) return;
     final controller = _controller;
     if (controller == null || !_initialized) return;
     unawaited(controller.play());
@@ -330,6 +342,9 @@ class _QuickWatchPageState extends State<QuickWatchPage> {
   }
 
   Widget _buildVideoLayer() {
+    if (_is18Blocked) {
+      return _build18PlusQuickAgeGate(context);
+    }
     final VideoPlayerController? controller = _controller;
     if (_initialized &&
         controller != null &&
@@ -382,6 +397,108 @@ class _QuickWatchPageState extends State<QuickWatchPage> {
     return _Poster(video: widget.video, failed: _failed, isCover: _isCover);
   }
 }
+
+
+  Widget _build18PlusQuickAgeGate(BuildContext context) {
+    final auth = AuthScope.maybeOf(context);
+    final bool isLoggedIn = auth?.isLoggedIn ?? false;
+    final int? userAge = auth?.profile?.age;
+
+    String title;
+    String subtitle;
+
+    if (!isLoggedIn) {
+      title = 'Nội dung giới hạn 18+';
+      subtitle =
+          'Video này không dành cho trẻ em. Vui lòng đăng nhập tài khoản từ 18 tuổi trở lên để xem.';
+    } else if (userAge != null && userAge < 18) {
+      title = 'Bị khóa: Video dành cho người trên 18 tuổi';
+      subtitle =
+          'Tài khoản của bạn ($userAge tuổi) chưa đủ điều kiện để truy cập nội dung này.';
+    } else {
+      title = 'Yêu cầu xác nhận độ tuổi';
+      subtitle =
+          'Video này được gắn nhãn 18+. Vui lòng cập nhật độ tuổi trong trang Tài khoản để tiếp tục xem.';
+    }
+
+    return Container(
+      color: Colors.black,
+      padding: const EdgeInsets.symmetric(horizontal: 28),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFFE50914).withValues(alpha: 0.18),
+                border: Border.all(
+                  color: const Color(0xFFE50914),
+                  width: 2.2,
+                ),
+              ),
+              child: const Center(
+                child: Text(
+                  '18+',
+                  style: TextStyle(
+                    color: Color(0xFFE50914),
+                    fontWeight: FontWeight.w900,
+                    fontSize: 22,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.72),
+                fontSize: 13,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white12),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(Icons.swipe_up_rounded, color: Colors.white70, size: 16),
+                  SizedBox(width: 6),
+                  Text(
+                    'Vuốt lên để xem video tiếp theo',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
 class _Poster extends StatelessWidget {
   const _Poster({
@@ -528,6 +645,24 @@ class _Caption extends StatelessWidget {
             if (video.channelId.isNotEmpty && !video.subscribed) ...<Widget>[
               const SizedBox(width: 8),
               _FollowPill(onTap: onFollow),
+            ],
+            if (video.is18Plus) ...<Widget>[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE50914),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text(
+                  '18+',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
             ],
           ],
         ),

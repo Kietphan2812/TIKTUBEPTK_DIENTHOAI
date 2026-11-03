@@ -28,6 +28,7 @@ class AuthController extends ChangeNotifier {
   Profile? get profile => _profile;
   bool get isAuthenticated =>
       _status == AuthStatus.authenticated && _profile != null;
+  bool get isLoggedIn => isAuthenticated;
 
   /// Đọc phiên đã lưu. Nếu có token + hồ sơ, vào app ngay rồi xác thực lại
   /// trong nền; token hết hạn sẽ tự quay về màn hình đăng nhập.

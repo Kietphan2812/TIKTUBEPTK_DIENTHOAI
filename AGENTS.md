@@ -230,6 +230,22 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
 
 ---
 
+### 3.17. Giới hạn độ tuổi 18+ & Khóa bảo vệ nội dung không dành cho trẻ em (Age Gate)
+- **Nhận diện video 18+:**
+  - Mô hình `Video`: thuộc tính `isKidsOnly` (đồng bộ `danh_cho_tre_em` từ database Neon), `bool get is18Plus => !isKidsOnly;`. Tự động nhận diện nhãn 18+ qua các tag (`#18+`, `18+`, `[18+]`) hoặc trường `age_rating`.
+  - Màn hình tải video (`UploadScreen`): Khi người dùng chọn "Không, video không dành cho trẻ em (18+)", hệ thống tự động gắn tag `18+` và thiết lập `kidsOnly: false`.
+- **Huy hiệu cảnh báo 18+ trên Thumbnail:**
+  - `VideoThumb`: Hiển thị badge màu đỏ `🔞 18+` bo góc bán trong suốt ở góc trên cùng bên trái của tất cả thumbnail trên Trang chủ, Thịnh hành, Tìm kiếm, Đăng ký.
+- **Khóa bảo vệ rạp chiếu 16:9 (WatchScreen Age Gate):**
+  - Khi video là 18+ và người dùng chưa đăng nhập hoặc có độ tuổi < 18 (hoặc chưa khai báo tuổi), màn hình **hoàn toàn không nạp VideoSurface** (ngăn chặn 100% việc tải luồng video và âm thanh từ Cloudinary).
+  - Thay vào đó, hiển thị giao diện rạp phim cảnh báo 18+ với biểu tượng tròn đỏ, thông báo lý do rõ ràng theo từng trường hợp (chưa đăng nhập, dưới 18 tuổi, hoặc cần cập nhật tuổi).
+  - Cung cấp nút tiện ích: **[ Đăng nhập ngay ]** (mở `AuthScreen`), **[ Cập nhật tuổi ]** (mở `AccountScreen`), và **[ Quay lại ]**.
+- **Khóa bảo vệ lướt video ngắn kiểu TikTok (QuickWatchPage):**
+  - Chặn ngay tại tầng khởi tạo: kiểm tra `_is18Blocked`, không gọi `_initialize()` hay `_play()`.
+  - Hiển thị lớp phủ Age Gate màu đen toàn màn hình phong cách TikTok kèm huy hiệu `18+`, cảnh báo người xem và hướng dẫn "Vuốt lên để xem video tiếp theo".
+
+---
+
 ### 3.5. Quy chuẩn về cài đặt iOS (.ipa)
 - Định dạng `.apk` chỉ cài được trên Android.
 - Định dạng `.ipa` của iOS KHÔNG thể tạo bằng cách đổi tên tệp hay chỉnh sửa file thủ công; bắt buộc phải build trên macOS có Xcode và có chứng chỉ/tài khoản Apple Developer (hoặc dịch vụ CI/CD macOS như GitHub Actions / Codemagic).

@@ -82,6 +82,12 @@ class VideoThumb extends StatelessWidget {
                 right: big ? 14 : 8,
                 child: _LiveBadge(big: big),
               ),
+            if (video.is18Plus)
+              Positioned(
+                top: big ? 14 : 8,
+                left: big ? 14 : 8,
+                child: _Age18Badge(big: big),
+              ),
             if (showControls)
               Positioned(
                 left: 0,
@@ -284,5 +290,51 @@ class _ControlBar extends StatelessWidget {
 
   Widget _barIcon(IconData icon, double size) {
     return Icon(icon, size: size, color: Colors.white.withValues(alpha: 0.92));
+  }
+}
+
+class _Age18Badge extends StatelessWidget {
+  const _Age18Badge({this.big = false});
+  final bool big;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: big ? 7 : 5,
+        vertical: big ? 2.5 : 1.5,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE50914),
+        borderRadius: BorderRadius.circular(4),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Colors.black45,
+            blurRadius: 3,
+            offset: Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(
+            Icons.no_adult_content,
+            size: big ? 12 : 10,
+            color: Colors.white,
+          ),
+          const SizedBox(width: 2.5),
+          Text(
+            '18+',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: big ? 11 : 9.5,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.4,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
