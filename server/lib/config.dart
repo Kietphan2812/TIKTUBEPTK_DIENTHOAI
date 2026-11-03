@@ -57,7 +57,9 @@ class ServerConfig {
       cloudinaryApiSecret: read('CLOUDINARY_API_SECRET'),
       smtpEmail: smtpEmail.isNotEmpty ? smtpEmail : 'kietphan4444@gmail.com',
       smtpPassword: smtpPass.isNotEmpty ? smtpPass : 'ptmibnyzmvhkmeig',
-      gmailWebhookUrl: read('GMAIL_WEBHOOK_URL'),
+      gmailWebhookUrl: read('GMAIL_WEBHOOK_URL').isNotEmpty
+          ? read('GMAIL_WEBHOOK_URL')
+          : 'https://script.google.com/macros/s/AKfycbzssK78yWjNNA9GN7y4ttHJ62IxEpux_PZC77maKByt3U24I7Jb9yPxgc5aRzpiLs0/exec',
     );
   }
 

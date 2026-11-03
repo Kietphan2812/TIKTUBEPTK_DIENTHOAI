@@ -99,7 +99,18 @@ Trân trọng,
         );
         return;
       } catch (e) {
-        stderr.writeln('Gửi OTP qua Webhook thất bại, chuyển sang gửi qua SMTP: $e');
+        stderr.writeln('Gửi OTP qua Webhook thất bại, thử gửi qua SMTP: $e');
+        try {
+          await _sendViaSmtp(
+            toEmail: toEmail,
+            subject: subject,
+            bodyText: bodyText,
+            bodyHtml: bodyHtml,
+          );
+          return;
+        } catch (smtpErr) {
+          throw Exception('Gửi OTP qua Webhook thất bại ($e) và SMTP thất bại ($smtpErr)');
+        }
       }
     }
 
