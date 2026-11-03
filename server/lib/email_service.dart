@@ -108,27 +108,27 @@ Trân trọng,
       timeout: const Duration(seconds: 15),
     );
 
-    final buffer = StringBuffer();
-    final stream = socket.cast<List<int>>().transform(utf8.decoder);
+    final lines = socket
+        .cast<List<int>>()
+        .transform(utf8.decoder)
+        .transform(const LineSplitter());
+    final iterator = StreamIterator<String>(lines);
 
-    Completer<String>? nextExpected;
-    final sub = stream.listen((data) {
-      buffer.write(data);
-      if (nextExpected != null && !nextExpected!.isCompleted) {
-        nextExpected!.complete(data);
-      }
-    });
-
-    Future<void> expect(String code) async {
-      final deadline = DateTime.now().add(const Duration(seconds: 12));
-      while (true) {
-        if (buffer.toString().contains(code)) return;
-        if (DateTime.now().isAfter(deadline)) {
-          throw TimeoutException('Quá thời gian phản hồi từ máy chủ SMTP ($code)');
+    Future<String> readResponse() async {
+      final buffer = StringBuffer();
+      while (await iterator.moveNext().timeout(const Duration(seconds: 15))) {
+        final line = iterator.current;
+        buffer.writeln(line);
+        // RFC 5321: Dòng cuối cùng của response luôn có dạng "XYZ ..." (dấu cách sau mã 3 chữ số)
+        if (line.length >= 4 && line[3] == ' ') {
+          final code = int.tryParse(line.substring(0, 3));
+          if (code != null && code >= 400) {
+            throw Exception('SMTP Server Error ($code): $line');
+          }
+          return buffer.toString().trim();
         }
-        nextExpected = Completer<String>();
-        await nextExpected!.future.timeout(const Duration(seconds: 12));
       }
+      throw TimeoutException('Mất kết nối với máy chủ SMTP Gmail.');
     }
 
     void sendLine(String line) {
@@ -136,36 +136,33 @@ Trân trọng,
     }
 
     try {
-      await expect('220');
-      buffer.clear();
+      // 1. Chờ lời chào từ server
+      await readResponse();
 
+      // 2. Gửi EHLO
       sendLine('EHLO localhost');
-      await expect('250 ');
-      buffer.clear();
+      await readResponse();
 
+      // 3. Đăng nhập AUTH LOGIN
       sendLine('AUTH LOGIN');
-      await expect('334 ');
-      buffer.clear();
+      await readResponse();
 
       sendLine(base64Encode(utf8.encode(cleanSender)));
-      await expect('334 ');
-      buffer.clear();
+      await readResponse();
 
       sendLine(base64Encode(utf8.encode(cleanPass)));
-      await expect('235');
-      buffer.clear();
+      await readResponse();
 
+      // 4. Định tuyến người gửi và người nhận
       sendLine('MAIL FROM:<$cleanSender>');
-      await expect('250');
-      buffer.clear();
+      await readResponse();
 
       sendLine('RCPT TO:<$toEmail>');
-      await expect('250');
-      buffer.clear();
+      await readResponse();
 
+      // 5. Soạn nội dung DATA
       sendLine('DATA');
-      await expect('354');
-      buffer.clear();
+      await readResponse();
 
       final boundary = '----=_Part_${DateTime.now().millisecondsSinceEpoch}';
       final rawSubject = '=?UTF-8?B?${base64Encode(utf8.encode(subject))}?=';
@@ -190,12 +187,11 @@ Trân trọng,
       sendLine('');
       sendLine('--$boundary--');
       sendLine('.');
-      await expect('250');
-      buffer.clear();
+      await readResponse();
 
+      // 6. Kết thúc phiên
       sendLine('QUIT');
     } finally {
-      await sub.cancel();
       await socket.close();
     }
   }

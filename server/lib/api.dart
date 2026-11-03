@@ -217,9 +217,9 @@ Handler createApi(
         otp: otp,
         userName: user['name'] as String?,
       );
-    } catch (e) {
-      stderr.writeln('Lỗi gửi email OTP: $e');
-      throw ApiError(500, 'Không thể gửi email OTP lúc này. Vui lòng thử lại sau.');
+    } catch (e, st) {
+      stderr.writeln('Lỗi gửi email OTP: $e\n$st');
+      throw ApiError(500, 'Lỗi gửi email OTP: $e');
     }
 
     return _json(<String, Object?>{
