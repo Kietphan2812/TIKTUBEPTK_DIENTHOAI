@@ -202,6 +202,21 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
 
 ---
 
+### 3.15. Nhạc chuông cuộc gọi hệ thống, Đưa App lên trước & Thông báo tương tác TIKTUBE
+- **Nhạc chuông cuộc gọi thật (Android Native RingtoneManager):**
+  - Tích hợp `RingtoneManager.getDefaultUri(TYPE_RINGTONE)` qua MethodChannel `com.example.flutter_app_ptk/app_control` trong `MainActivity.kt`.
+  - Khi có cuộc gọi đến (`call:incoming`), máy tự động đổ chuông điện thoại thật và lặp vô tận cho đến khi bấm Trả lời, Từ chối hoặc cuộc gọi kết thúc.
+  - Tự động dừng chuông ngay lập tức khi người dùng bấm Trả lời hoặc Từ chối trên thông báo/màn hình.
+- **Tự động đưa App lên màn hình trước (Bring App To Front):**
+  - `CallManager.bringAppToFront()` kích hoạt `startActivity` với cờ `FLAG_ACTIVITY_NEW_TASK | FLAG_ACTIVITY_REORDER_TO_FRONT | FLAG_ACTIVITY_SINGLE_TOP`.
+  - Kết hợp quyền `SYSTEM_ALERT_WINDOW` giúp ứng dụng tự động mở lên màn hình trước khi có cuộc gọi đến.
+- **Thông báo đẩy tương tác TIKTUBE (Thích, Bình luận, Đăng ký kênh):**
+  - Tạo `NotificationSyncService` tự động đồng bộ danh sách thông báo từ API Neon Postgres.
+  - Kênh thông báo `tiktube_interactions` (Tương tác TIKTUBE, Importance High).
+  - Khi có người thích video, bình luận video hoặc đăng ký kênh, hệ thống tự động bắn Heads-up Notification nổi kèm rung và âm thanh thông báo.
+
+---
+
 ### 3.5. Quy chuẩn về cài đặt iOS (.ipa)
 - Định dạng `.apk` chỉ cài được trên Android.
 - Định dạng `.ipa` của iOS KHÔNG thể tạo bằng cách đổi tên tệp hay chỉnh sửa file thủ công; bắt buộc phải build trên macOS có Xcode và có chứng chỉ/tài khoản Apple Developer (hoặc dịch vụ CI/CD macOS như GitHub Actions / Codemagic).

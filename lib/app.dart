@@ -11,6 +11,7 @@ import 'data/tiktube_api.dart';
 import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/call_manager.dart';
+import 'services/notification_sync_service.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_controller.dart';
 
@@ -46,6 +47,7 @@ class _PtkTubeAppState extends State<PtkTubeApp> {
     super.initState();
     _api = widget.api ?? ApiClient();
     CallManager.instance.init();
+    NotificationSyncService.instance.init(_api);
     if (widget.authRequired) {
       _auth = AuthController(_api, store: widget.authStore);
       unawaited(_auth!.restore());
@@ -54,6 +56,7 @@ class _PtkTubeAppState extends State<PtkTubeApp> {
 
   @override
   void dispose() {
+    NotificationSyncService.instance.dispose();
     _auth?.dispose();
     _theme.dispose();
     super.dispose();

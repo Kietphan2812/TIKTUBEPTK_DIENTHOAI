@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../data/chat_service.dart';
 import '../models/chat_contact.dart';
+import '../services/call_manager.dart';
 
 class CallOverlay extends StatefulWidget {
   const CallOverlay({
@@ -82,6 +83,10 @@ class _CallOverlayState extends State<CallOverlay>
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
+    if (widget.isIncoming && !_connected) {
+      unawaited(CallManager.instance.startRingtone());
+    }
+
     if (!widget.isIncoming) {
       ChatService.instance.initiateCall(widget.friend.id, isVideo: widget.isVideo);
       Timer(const Duration(milliseconds: 3000), () {
@@ -113,12 +118,14 @@ class _CallOverlayState extends State<CallOverlay>
   }
 
   void _answerCall() {
+    unawaited(CallManager.instance.stopRingtone());
     ChatService.instance.answerCall(widget.friend.id);
     setState(() => _connected = true);
     _startTimer();
   }
 
   void _hangup() {
+    unawaited(CallManager.instance.stopRingtone());
     _callTimer?.cancel();
     _callEventsSub?.cancel();
     ChatService.instance.endCall(
@@ -131,6 +138,7 @@ class _CallOverlayState extends State<CallOverlay>
 
   @override
   void dispose() {
+    unawaited(CallManager.instance.stopRingtone());
     _pulseController.dispose();
     _callTimer?.cancel();
     _callEventsSub?.cancel();

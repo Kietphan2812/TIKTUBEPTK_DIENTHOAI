@@ -46,6 +46,15 @@ class PushNotificationService {
     playSound: true,
   );
 
+  static const AndroidNotificationChannel _socialChannel =
+      AndroidNotificationChannel(
+    'tiktube_interactions',
+    'Tương tác TIKTUBE',
+    description: 'Kênh thông báo thích, bình luận và đăng ký kênh',
+    importance: Importance.high,
+    playSound: true,
+  );
+
   bool _initialized = false;
   String? _fcmToken;
 
@@ -100,6 +109,7 @@ class PushNotificationService {
       if (androidImplementation != null) {
         await androidImplementation.createNotificationChannel(_messagesChannel);
         await androidImplementation.createNotificationChannel(_callsChannel);
+        await androidImplementation.createNotificationChannel(_socialChannel);
         await androidImplementation.requestNotificationsPermission();
       }
 
@@ -165,12 +175,15 @@ class PushNotificationService {
 
         if (response.actionId == 'action_decline') {
           // Bấm Từ chối trực tiếp từ thông báo
+          unawaited(CallManager.instance.stopRingtone());
           ChatService.instance.rejectCall(callerId);
           unawaited(cancelCallNotification());
           return;
         }
 
         // Bấm Trả lời hoặc bấm thẳng vào banner thông báo -> Chuyển ngay vào trang gọi!
+        unawaited(CallManager.instance.stopRingtone());
+        unawaited(CallManager.instance.bringAppToFront());
         CallManager.instance.showIncomingCall(
           callerId: callerId,
           callerName: callerName,
@@ -308,6 +321,46 @@ class PushNotificationService {
       title: senderName,
       body: text,
       isCall: false,
+    );
+  }
+
+  /// Hiển thị thông báo tương tác video TIKTUBE (Thích, Bình luận, Đăng ký kênh)
+  Future<void> showSocialNotification({
+    required String id,
+    required String content,
+  }) async {
+    String title = 'TIKTUBE';
+    if (content.contains('đã thích')) {
+      title = '❤️ Lượt thích mới';
+    } else if (content.contains('đã bình luận')) {
+      title = '💬 Bình luận mới';
+    } else if (content.contains('đã đăng ký')) {
+      title = '🔔 Đăng ký kênh mới';
+    }
+
+    final androidDetails = AndroidNotificationDetails(
+      _socialChannel.id,
+      _socialChannel.name,
+      channelDescription: _socialChannel.description,
+      importance: _socialChannel.importance,
+      priority: Priority.high,
+      icon: '@mipmap/ic_launcher',
+    );
+
+    final details = NotificationDetails(
+      android: androidDetails,
+      iOS: const DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      ),
+    );
+
+    await _localNotifications.show(
+      id: id.hashCode,
+      title: title,
+      body: content,
+      notificationDetails: details,
     );
   }
 }

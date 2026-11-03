@@ -27,6 +27,7 @@ import 'subscriptions_screen.dart';
 import 'trending_screen.dart';
 import 'upload_choice_sheet.dart';
 import 'watch_screen.dart';
+import '../services/notification_sync_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, this.api});
@@ -238,6 +239,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _loadingNotifications = true;
     try {
       final List<AppNotification> items = await _api.fetchNotifications();
+      unawaited(NotificationSyncService.instance.checkNewNotifications());
       if (!mounted) return;
       setState(() {
         _unreadNotifications = items

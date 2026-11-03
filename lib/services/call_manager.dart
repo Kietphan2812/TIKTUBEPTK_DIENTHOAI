@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../data/chat_service.dart';
 import '../models/chat_contact.dart';
@@ -7,7 +8,7 @@ import '../widgets/call_overlay.dart';
 import 'push_notification_service.dart';
 
 /// Quản lý cuộc gọi toàn cục (Global Call Manager)
-/// Tự động chuyển app sang màn hình cuộc gọi bất kể người dùng đang ở trang nào.
+/// Tự động chuyển app sang màn hình cuộc gọi, phát nhạc chuông hệ thống, và đưa app lên trước.
 class CallManager {
   CallManager._();
   static final CallManager instance = CallManager._();
@@ -15,8 +16,38 @@ class CallManager {
   static final GlobalKey<NavigatorState> navigatorKey =
       GlobalKey<NavigatorState>();
 
+  static const MethodChannel _appControl =
+      MethodChannel('com.example.flutter_app_ptk/app_control');
+
   StreamSubscription<Map<String, dynamic>>? _callSub;
   bool _initialized = false;
+
+  /// Đưa ứng dụng lên màn hình chính khi có cuộc gọi đến
+  Future<void> bringAppToFront() async {
+    try {
+      await _appControl.invokeMethod('bringToFront');
+    } catch (e) {
+      debugPrint('[CallManager] Lỗi bringAppToFront: $e');
+    }
+  }
+
+  /// Phát nhạc chuông điện thoại thật của hệ thống
+  Future<void> startRingtone() async {
+    try {
+      await _appControl.invokeMethod('startRingtone');
+    } catch (e) {
+      debugPrint('[CallManager] Lỗi startRingtone: $e');
+    }
+  }
+
+  /// Dừng phát nhạc chuông điện thoại
+  Future<void> stopRingtone() async {
+    try {
+      await _appControl.invokeMethod('stopRingtone');
+    } catch (e) {
+      debugPrint('[CallManager] Lỗi stopRingtone: $e');
+    }
+  }
 
   void init() {
     if (_initialized) return;
@@ -36,6 +67,10 @@ class CallManager {
         final callerAvatar = caller['avatar']?.toString() ?? '';
         final isVideo = (data['isVideo'] == true) || (data['type'] == 'video');
 
+        // Bật chuông điện thoại & chuyển app ra màn hình trước
+        unawaited(bringAppToFront());
+        unawaited(startRingtone());
+
         showIncomingCall(
           callerId: callerId,
           callerName: callerName,
@@ -43,7 +78,8 @@ class CallManager {
           callerAvatar: callerAvatar,
           isVideo: isVideo,
         );
-      } else if (type == 'ended' || type == 'rejected') {
+      } else if (type == 'ended' || type == 'rejected' || type == 'answered') {
+        unawaited(stopRingtone());
         unawaited(PushNotificationService.instance.cancelCallNotification());
       }
     });
@@ -119,7 +155,7 @@ class CallManager {
 
   void dispose() {
     _callSub?.cancel();
+    unawaited(stopRingtone());
     _initialized = false;
   }
 }
-
