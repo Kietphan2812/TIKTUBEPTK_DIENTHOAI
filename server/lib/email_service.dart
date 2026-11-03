@@ -6,12 +6,14 @@ class EmailService {
   EmailService({
     required this.smtpEmail,
     required this.smtpPassword,
+    this.gmailWebhookUrl = '',
   });
 
   final String smtpEmail;
   final String smtpPassword;
+  final String gmailWebhookUrl;
 
-  /// Gửi mã xác thực OTP khôi phục mật khẩu qua Gmail SMTP SSL (Cổng 465)
+  /// Gửi mã xác thực OTP khôi phục mật khẩu qua Gmail Webhook (HTTPS 443) hoặc Gmail SMTP SSL (Cổng 465)
   Future<void> sendPasswordResetOtp({
     required String toEmail,
     required String otp,
@@ -85,12 +87,61 @@ Trân trọng,
 </html>
 ''';
 
+    final cleanWebhook = gmailWebhookUrl.trim();
+    if (cleanWebhook.isNotEmpty) {
+      try {
+        await _sendViaWebhook(
+          webhookUrl: cleanWebhook,
+          toEmail: toEmail,
+          subject: subject,
+          bodyText: bodyText,
+          bodyHtml: bodyHtml,
+        );
+        return;
+      } catch (e) {
+        stderr.writeln('Gửi OTP qua Webhook thất bại, chuyển sang gửi qua SMTP: $e');
+      }
+    }
+
     await _sendViaSmtp(
       toEmail: toEmail,
       subject: subject,
       bodyText: bodyText,
       bodyHtml: bodyHtml,
     );
+  }
+
+  Future<void> _sendViaWebhook({
+    required String webhookUrl,
+    required String toEmail,
+    required String subject,
+    required String bodyText,
+    required String bodyHtml,
+  }) async {
+    final client = HttpClient();
+    try {
+      final uri = Uri.parse(webhookUrl);
+      final request = await client.postUrl(uri).timeout(const Duration(seconds: 15));
+      request.followRedirects = false;
+      request.headers.contentType = ContentType.json;
+      final payload = jsonEncode({
+        'to': toEmail,
+        'subject': subject,
+        'text': bodyText,
+        'html': bodyHtml,
+      });
+      request.write(payload);
+      final response = await request.close().timeout(const Duration(seconds: 25));
+
+      // Google Apps Script redirect với mã 302/303 khi thành công
+      if (response.statusCode >= 200 && response.statusCode < 400) {
+        return;
+      }
+      final responseBody = await utf8.decoder.bind(response).join();
+      throw Exception('Webhook trả về mã ${response.statusCode}: $responseBody');
+    } finally {
+      client.close();
+    }
   }
 
   Future<void> _sendViaSmtp({

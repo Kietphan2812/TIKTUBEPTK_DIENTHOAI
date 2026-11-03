@@ -10,6 +10,7 @@ class ServerConfig {
     this.cloudinaryApiSecret = '',
     this.smtpEmail = 'kietphan4444@gmail.com',
     this.smtpPassword = 'ptmibnyzmvhkmeig',
+    this.gmailWebhookUrl = '',
   });
 
   final String databaseUrl;
@@ -19,6 +20,7 @@ class ServerConfig {
   final String cloudinaryApiSecret;
   final String smtpEmail;
   final String smtpPassword;
+  final String gmailWebhookUrl;
 
   bool get hasCloudinary =>
       cloudinaryCloudName.isNotEmpty &&
@@ -55,6 +57,7 @@ class ServerConfig {
       cloudinaryApiSecret: read('CLOUDINARY_API_SECRET'),
       smtpEmail: smtpEmail.isNotEmpty ? smtpEmail : 'kietphan4444@gmail.com',
       smtpPassword: smtpPass.isNotEmpty ? smtpPass : 'ptmibnyzmvhkmeig',
+      gmailWebhookUrl: read('GMAIL_WEBHOOK_URL'),
     );
   }
 

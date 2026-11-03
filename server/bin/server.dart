@@ -41,6 +41,7 @@ Future<void> main() async {
   final EmailService emailService = EmailService(
     smtpEmail: config.smtpEmail,
     smtpPassword: config.smtpPassword,
+    gmailWebhookUrl: config.gmailWebhookUrl,
   );
   stdout.writeln('Gmail OTP Service: đã cấu hình (${config.smtpEmail}).');
 

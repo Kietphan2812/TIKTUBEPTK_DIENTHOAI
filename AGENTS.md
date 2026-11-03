@@ -160,6 +160,7 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
   - Sử dụng giao thức Gmail SMTP SSL cổng 465 trực tiếp từ máy chủ Dart (`EmailService`), không phụ thuộc thư viện bên ngoài.
   - Cấu hình qua biến môi trường `SMTP_EMAIL` và `SMTP_PASSWORD` (Mật khẩu ứng dụng 16 ký tự `ptmi bnyz mvhk meig` tạo từ tài khoản `kietphan4444@gmail.com`).
   - Giao diện email HTML chuyên nghiệp với logo TIKTUBE, mã OTP 6 số in đậm viền đứt nét, cảnh báo bảo mật và thời gian hết hạn 5 phút.
+  - **Lưu ý mạng Render Cloud:** Render gói miễn phí (Free Tier) chặn tường lửa outbound tất cả các cổng SMTP truyền thống (25, 465, 587) gây ra `SocketException (errno = 110)`. Do đó hệ thống hỗ trợ `GMAIL_WEBHOOK_URL` (Google Apps Script Web App chạy trên HTTPS cổng 443 không bao giờ bị chặn) với fallback về SMTP cổng 465 khi chạy local.
 - **Backend API Endpoints:**
   - `POST /api/auth/forgot-password`: Kiểm tra email trong bảng `nguoi_dung` Neon PostgreSQL, sinh mã OTP 6 số ngẫu nhiên, lưu bộ nhớ đệm và gửi email.
   - `POST /api/auth/verify-otp`: Xác thực mã OTP trước khi cho phép đặt mật khẩu.
