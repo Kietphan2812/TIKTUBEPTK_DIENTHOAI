@@ -176,6 +176,19 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
 
 ---
 
+### 3.13. Thông báo Cuộc gọi & Tin nhắn Đẩy (Firebase FCM & Local Notifications)
+- **Cấu hình Firebase Cloud Messaging (FCM):**
+  - Đã tích hợp `android/app/google-services.json` kết nối dự án Firebase `tiktube-cd8d5` (Package `com.example.flutter_app_ptk`).
+  - Thiết lập Google Services Gradle plugin trong `android/settings.gradle.kts` và `android/app/build.gradle.kts`.
+  - Cấp đầy đủ quyền Android Manifest: `POST_NOTIFICATIONS`, `VIBRATE`, `WAKE_LOCK`, `USE_FULL_SCREEN_INTENT`, `showWhenLocked`, `turnScreenOn`.
+- **Dịch vụ Thông báo (`PushNotificationService`):**
+  - Kênh thông báo tin nhắn: `tiktube_messages` (Importance High, Heads-up popup).
+  - Kênh thông báo cuộc gọi đến: `tiktube_calls` (Importance Max, Full-screen intent, rung chuông nổi).
+  - Xử lý thông báo ngầm qua `@pragma('vm:entry-point') _firebaseMessagingBackgroundHandler`.
+  - Kết nối trực tiếp với `ChatService`: khi nhận sự kiện `message:new` tự động thả banner tin nhắn mới kèm tên người gửi, khi nhận sự kiện `call:incoming` tự động phát thông báo cuộc gọi đến kèm tên và SĐT người gọi.
+
+---
+
 ### 3.5. Quy chuẩn về cài đặt iOS (.ipa)
 - Định dạng `.apk` chỉ cài được trên Android.
 - Định dạng `.ipa` của iOS KHÔNG thể tạo bằng cách đổi tên tệp hay chỉnh sửa file thủ công; bắt buộc phải build trên macOS có Xcode và có chứng chỉ/tài khoản Apple Developer (hoặc dịch vụ CI/CD macOS như GitHub Actions / Codemagic).

@@ -8,6 +8,7 @@ import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import '../models/chat_contact.dart';
 import '../models/profile.dart';
+import '../services/push_notification_service.dart';
 import 'user_preferences.dart';
 
 class ChatService extends ChangeNotifier {
@@ -608,6 +609,25 @@ class ChatService extends ChangeNotifier {
               );
             }
 
+            if (!msg.isMe) {
+              final sender = _friends.firstWhere(
+                (f) => f.id == partnerId,
+                orElse: () => Friend(
+                  id: partnerId,
+                  name: 'Bạn bè',
+                  username: 'banbe',
+                  phone: '',
+                  avatar: '',
+                ),
+              );
+              unawaited(PushNotificationService.instance.showNewMessageNotification(
+                senderName: sender.name.isNotEmpty ? sender.name : sender.username,
+                text: msg.text.isNotEmpty
+                    ? msg.text
+                    : (msg.imageUrl != null ? '[Hình ảnh]' : 'Tin nhắn mới'),
+              ));
+            }
+
             notifyListeners();
             unawaited(_saveToStorage());
           }
@@ -633,10 +653,21 @@ class ChatService extends ChangeNotifier {
       // Nhận cuộc gọi đến thời gian thực
       _socket!.on('call:incoming', (data) {
         if (data is Map) {
+          final map = Map<String, dynamic>.from(data);
           _callEventsController.add({
             'type': 'incoming',
-            'data': Map<String, dynamic>.from(data),
+            'data': map,
           });
+
+          final caller = map['caller'];
+          final callerName = (caller is Map ? caller['username'] : null)?.toString() ?? 'Bạn bè';
+          final callerPhone = (caller is Map ? caller['phone'] : null)?.toString() ?? '';
+          final isVideo = map['type'] == 'video';
+          unawaited(PushNotificationService.instance.showIncomingCallNotification(
+            callerName: callerName,
+            callerPhone: callerPhone,
+            isVideo: isVideo,
+          ));
         }
       });
 

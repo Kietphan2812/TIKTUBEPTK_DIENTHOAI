@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "60200620861",
+    "project_id": "tiktube-cd8d5",
+    "storage_bucket": "tiktube-cd8d5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:60200620861:android:96c4ab0412e8e2acffab54",
+        "android_client_info": {
+          "package_name": "com.example.flutter_app_ptk"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDEcfKADqo56LH7nKojiP8zCl2c7Sw_Rew"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

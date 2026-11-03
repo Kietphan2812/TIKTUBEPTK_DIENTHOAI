@@ -4,7 +4,7 @@ Bản dựng lại giao diện **TIKTUBE** (trang xem & chia sẻ video của PT
 kèm REST API viết bằng Dart, dùng chung database Neon với web app và lưu video trên
 Cloudinary.
 
-Phiên bản Android đang phát hành: **1.0.28+29** (APK cài trực tiếp, trỏ API
+Phiên bản Android đang phát hành: **1.0.29+30** (APK cài trực tiếp, trỏ API
 `https://tiktube-api.onrender.com`).
 
 ## Kiến trúc
