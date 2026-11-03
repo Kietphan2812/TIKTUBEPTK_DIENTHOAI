@@ -144,11 +144,14 @@ Handler createApi(
       throw ApiError(409, 'Email đã được sử dụng.');
     }
 
+    final phone = (body['phone'] as String?)?.trim();
+
     final profile = await db.createUser(
       userKey: username,
       name: name,
       email: email,
       password: password,
+      phone: phone,
       age: age,
     );
     if (profile == null) {
@@ -874,11 +877,13 @@ Handler createApi(
     }
 
     final avatarUrl = (body['avatarUrl'] as String?)?.trim();
+    final phone = (body['phone'] as String?)?.trim();
 
     final profile = await db.updateProfile(
       userKey: userKey,
       name: name,
       email: email,
+      phone: phone,
       age: age,
       avatarUrl: avatarUrl,
     );

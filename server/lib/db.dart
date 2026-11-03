@@ -140,7 +140,7 @@ limit 1
       Sql.named('''
 select nguoi_dung_id, ten_dang_nhap,
        coalesce(nullif(ten_hien_thi, ''), ten_dang_nhap),
-       email, do_tuoi, anh_dai_dien
+       email, do_tuoi, anh_dai_dien, so_dien_thoai
 from nguoi_dung
 where lower(email) = lower(@email)
 limit 1
@@ -179,19 +179,20 @@ where lower(email) = lower(@email)
     required String name,
     required String email,
     required String password,
+    String? phone,
     int? age,
   }) async {
     final result = await _pool.execute(
       Sql.named('''
 insert into nguoi_dung (
-  ten_dang_nhap, ten_hien_thi, email, mat_khau_hash, do_tuoi
+  ten_dang_nhap, ten_hien_thi, email, mat_khau_hash, do_tuoi, so_dien_thoai
 ) values (
-  @userKey, @name, lower(@email), @passwordHash, @age
+  @userKey, @name, lower(@email), @passwordHash, @age, @phone
 )
 on conflict do nothing
 returning nguoi_dung_id, ten_dang_nhap,
           coalesce(nullif(ten_hien_thi, ''), ten_dang_nhap),
-          email, do_tuoi, anh_dai_dien
+          email, do_tuoi, anh_dai_dien, so_dien_thoai
 '''),
       parameters: {
         'userKey': userKey,
@@ -199,6 +200,7 @@ returning nguoi_dung_id, ten_dang_nhap,
         'email': email,
         'passwordHash': _passwordHash(password),
         'age': (age ?? 18).toString(),
+        'phone': phone,
       },
     );
     if (result.isEmpty) return null;
@@ -217,7 +219,7 @@ returning nguoi_dung_id, ten_dang_nhap,
       Sql.named('''
 select nguoi_dung_id, ten_dang_nhap,
        coalesce(nullif(ten_hien_thi, ''), ten_dang_nhap),
-       email, do_tuoi, anh_dai_dien, mat_khau_hash
+       email, do_tuoi, anh_dai_dien, so_dien_thoai, mat_khau_hash
 from nguoi_dung
 where lower(ten_dang_nhap) = lower(@login)
    or lower(email) = lower(@login)
@@ -228,7 +230,7 @@ limit 1
     if (result.isEmpty) return null;
 
     final row = result.first;
-    final stored = (row[6] as String?)?.trim().toLowerCase();
+    final stored = (row[7] as String?)?.trim().toLowerCase();
     if (stored == null || stored.isEmpty) return null;
     final actual = _passwordHash(password);
     if (!_safeEquals(stored, actual)) return null;
@@ -261,7 +263,7 @@ on conflict (token_hash) do nothing
       Sql.named('''
 select u.nguoi_dung_id, u.ten_dang_nhap,
        coalesce(nullif(u.ten_hien_thi, ''), u.ten_dang_nhap),
-       u.email, u.do_tuoi, u.anh_dai_dien
+       u.email, u.do_tuoi, u.anh_dai_dien, u.so_dien_thoai
 from app_sessions s
 join nguoi_dung u on u.nguoi_dung_id = s.nguoi_dung_id
 where s.token_hash = @tokenHash and s.expires_at > now()
@@ -1860,7 +1862,7 @@ limit 20
       Sql.named('''
 select nguoi_dung_id, ten_dang_nhap,
        coalesce(nullif(ten_hien_thi, ''), ten_dang_nhap),
-       email, do_tuoi, anh_dai_dien
+       email, do_tuoi, anh_dai_dien, so_dien_thoai
 from nguoi_dung
 where lower(ten_dang_nhap) = lower(@userKey)
 limit 1
@@ -1875,6 +1877,7 @@ limit 1
     required String userKey,
     required String name,
     required String email,
+    String? phone,
     int? age,
     String? avatarUrl,
   }) async {
@@ -1885,16 +1888,18 @@ set ten_hien_thi = @name,
     email = lower(@email),
     do_tuoi = @age,
     anh_dai_dien = coalesce(@avatarUrl, anh_dai_dien),
+    so_dien_thoai = coalesce(@phone, so_dien_thoai),
     ngay_cap_nhat = now()
 where lower(ten_dang_nhap) = lower(@userKey)
 returning nguoi_dung_id, ten_dang_nhap,
           coalesce(nullif(ten_hien_thi, ''), ten_dang_nhap),
-          email, do_tuoi, anh_dai_dien
+          email, do_tuoi, anh_dai_dien, so_dien_thoai
 '''),
       parameters: {
         'userKey': userKey,
         'name': name,
         'email': email,
+        'phone': phone,
         'age': (age ?? 18).toString(),
         'avatarUrl': avatarUrl,
       },
@@ -2032,12 +2037,14 @@ on conflict (nguoi_dung_id, ngay) do update set
   static Map<String, Object?> _profileFromRow(ResultRow row) {
     final username = row[1]?.toString() ?? '';
     final displayName = row[2]?.toString().trim() ?? '';
+    final phone = row.length > 6 ? row[6]?.toString() : null;
     return <String, Object?>{
       'userKey': username,
       'name': displayName.isEmpty ? username : displayName,
       'email': row[3]?.toString() ?? '',
       'age': int.tryParse(row[4]?.toString() ?? ''),
       'avatarUrl': row[5]?.toString(),
+      'phone': (phone != null && phone.isNotEmpty) ? phone : null,
     };
   }
 

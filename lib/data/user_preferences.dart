@@ -26,11 +26,11 @@ class UserPreferences {
       if (cleanPhone.isEmpty) {
         await _prefs
             .remove(_phoneKey(cleanKey))
-            .timeout(const Duration(milliseconds: 500));
+            .timeout(const Duration(seconds: 3));
       } else {
         await _prefs
             .setString(_phoneKey(cleanKey), cleanPhone)
-            .timeout(const Duration(milliseconds: 500));
+            .timeout(const Duration(seconds: 3));
       }
     } catch (_) {}
   }
@@ -47,7 +47,7 @@ class UserPreferences {
     try {
       final saved = await _prefs
           .getString(_phoneKey(cleanKey))
-          .timeout(const Duration(milliseconds: 500));
+          .timeout(const Duration(seconds: 3));
       if (saved != null && saved.isNotEmpty) {
         _memoryCache[cleanKey] = saved;
         return saved;
