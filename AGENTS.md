@@ -128,11 +128,13 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
   - Thanh trạng thái `_buildNeonStatusBanner` trên `ChatScreen` ưu tiên hiển thị SĐT thực đã lưu, loại bỏ triệt để chuỗi hash ngẫu nhiên cũ (`0320001688`).
   - Khi khởi động lại app (`AuthController.restore()`), hệ thống bảo toàn trường `phone` của phiên hiện tại thay vì bị ghi đè bởi giá trị rỗng từ máy chủ video.
 
-### 3.10. Lưu số điện thoại vĩnh viễn theo tài khoản (UserPreferences)
+### 3.10. Lưu số điện thoại vĩnh viễn theo tài khoản (Neon PostgreSQL nguoi_dung & UserPreferences)
 - **Cơ chế lưu trữ vĩnh viễn:**
+  - **Lưu trực tiếp vào database Neon PostgreSQL:** Đã thêm cột `so_dien_thoai VARCHAR(20)` vào bảng `nguoi_dung` của database Neon `neondb`. Tất cả các API `GET /api/me`, `PATCH /api/me`, `POST /api/auth/register`, `POST /api/auth/login` đều đọc và ghi nhận trường `phone` trực tiếp từ database.
+  - SĐT tài khoản `kietphan2812` đã được cập nhật vĩnh viễn là `0338351410` trong cơ sở dữ liệu Neon.
   - Tạo `UserPreferences` lưu trữ vĩnh viễn số điện thoại theo khóa riêng biệt `tiktube_permanent_phone_<userKey>` trên thiết bị. Khóa này KHÔNG bị xóa khi người dùng đăng xuất.
-  - Khi người dùng đăng nhập lại (`AuthController.login()`), hệ thống tự động tìm và gắn lại số điện thoại đã lưu vào hồ sơ người dùng.
-  - Khi mở trang Tài khoản (`AccountScreen`), nếu số điện thoại chưa kịp tải từ máy chủ, hệ thống tự động phục hồi từ `UserPreferences.getUserPhone` và điền lại vào ô nhập ngay lập tức.
+  - Khi người dùng đăng nhập lại (`AuthController.login()`), hệ thống tự động nạp SĐT từ database hoặc bộ nhớ thiết bị vào hồ sơ người dùng.
+  - Khi mở trang Tài khoản (`AccountScreen`), số điện thoại tự động tải về từ máy chủ và điền vào ô nhập ngay lập tức.
   - Trong `ChatService`, khi tải danh sách người dùng từ Neon SQL, nếu tài khoản đã có SĐT trên Neon, hệ thống tự động sao lưu ngược lại vào `UserPreferences` để bảo toàn dữ liệu vĩnh viễn xuyên suốt mọi phiên đăng nhập/đăng xuất.
 
 ---
