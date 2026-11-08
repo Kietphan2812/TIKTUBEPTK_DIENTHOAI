@@ -12,6 +12,8 @@ dependencies:
   shelf_router: ^1.1.4
   http: ^1.2.2
   crypto: ^3.0.6
+  googleapis: ^18.0.0
+  googleapis_auth: ^2.3.7
 
 dev_dependencies:
   lints: ^5.1.1

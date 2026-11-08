@@ -252,6 +252,19 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
 
 ---
 
+### 3.17. Lưu trữ Video dung lượng lớn trên Google Drive 400 GB (Kiến trúc Hybrid Google Drive + Cloudinary)
+- **Kiến trúc lưu trữ kết hợp (Hybrid Storage Architecture):**
+  - **Google Drive Storage (400 GB+):** Lưu trữ toàn bộ các tệp video tải lên (`videoUrl` phát luồng trực tiếp `https://drive.google.com/uc?export=download&id=...`). Video được tổ chức trong thư mục `TIKTUBE_VIDEOS` (ID: `19KOpd7VOawrH2J_E8zbNkJagHloqFPRI`).
+  - **Cloudinary CDN (`fvqm3bbv` / `qfgja134`):** Tiếp tục lưu trữ thumbnail video, ảnh đại diện người dùng, và ảnh trong tin nhắn chat thời gian thực.
+  - **Cơ chế dự phòng tự động (Auto Fallback):** Nếu Google Drive gặp sự cố hoặc chưa cấu hình, hệ thống tự động fallback tải lên Cloudinary mà không gián đoạn người dùng.
+- **Xác thực OAuth 2.0 (Direct Quota Usage):**
+  - Service Account bị Google chặn do quota 0 MB trên My Drive.
+  - Hệ thống sử dụng giao thức OAuth 2.0 Offline Access với `RefreshToken` (`GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REFRESH_TOKEN`).
+  - `autoRefreshingClient` tự động gia hạn token vĩnh viễn, tiêu thụ trực tiếp vào hạn mức 400 GB của tài khoản `kietphan4444@gmail.com`.
+  - Quản lý tệp hai chiều: hỗ trợ xóa video tự động trên Google Drive khi xóa video trong database (`DELETE /api/videos/<id>`).
+
+---
+
 ## 4. GHI NHỚ MÔI TRƯỜNG MÁY CHỦ & CLIENT
 - **Hệ điều hành máy người dùng:** Windows.
 - **Lệnh PowerShell:** Dùng dấu `;` để nối chuỗi lệnh thay vì `&&`.

@@ -47,7 +47,10 @@ app.*.map.json
 # Widget Preview related
 .widget_preview/
 
-# Local secrets - không commit chuỗi kết nối Neon/Cloudinary
+# Local secrets - không commit chuỗi kết nối Neon/Cloudinary/Google
 **/.env
 !**/.env.example
 server/build/
+**/service-account*.json
+**/client_secret*.json
+**/oauth_credentials*.json

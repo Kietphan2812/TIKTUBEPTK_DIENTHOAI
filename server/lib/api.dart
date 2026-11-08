@@ -11,6 +11,7 @@ import 'package:shelf_router/shelf_router.dart';
 import 'cloudinary.dart';
 import 'db.dart';
 import 'email_service.dart';
+import 'google_drive_service.dart';
 
 class _OtpRecord {
   _OtpRecord({
@@ -48,6 +49,7 @@ class ApiError implements Exception {
 Handler createApi(
   Db db, {
   CloudinaryService? cloudinary,
+  GoogleDriveService? googleDrive,
   EmailService? emailService,
 }) {
   final mailer = emailService ??
@@ -314,6 +316,7 @@ Handler createApi(
       'status': 'ok',
       'database': 'neon',
       'cloudinary': cloudinary?.configured ?? false,
+      'googleDrive': googleDrive?.configured ?? false,
       'time': DateTime.now().toUtc().toIso8601String(),
     });
   });
@@ -401,11 +404,13 @@ Handler createApi(
   });
 
   router.post('/api/videos/upload', (Request request) async {
-    if (cloudinary == null || !cloudinary.configured) {
+    final bool useGoogleDrive = googleDrive != null && googleDrive.configured;
+    final bool useCloudinary = cloudinary != null && cloudinary.configured;
+
+    if (!useGoogleDrive && !useCloudinary) {
       throw ApiError(
         503,
-        'Chưa cấu hình Cloudinary. Thêm CLOUDINARY_CLOUD_NAME, '
-        'CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET vào server/.env.',
+        'Chưa cấu hình dịch vụ lưu trữ (Cloudinary hoặc Google Drive).',
       );
     }
 
@@ -435,10 +440,51 @@ Handler createApi(
       throw ApiError(413, 'Video vượt quá giới hạn 100 MB.');
     }
 
-    final upload = await cloudinary.uploadVideo(
-      bytes: bytes,
-      filename: filename.isEmpty ? 'video.mp4' : filename,
-    );
+    String videoUrl;
+    String thumbnailUrl;
+    String publicId;
+    int durationSeconds;
+    bool isGoogleDriveUpload = false;
+
+    if (useGoogleDrive) {
+      try {
+        stdout.writeln('Đang tải video lên Google Drive (400GB+)...');
+        final gUpload = await googleDrive.uploadVideo(
+          bytes: bytes,
+          filename: filename.isEmpty ? 'video.mp4' : filename,
+        );
+        videoUrl = gUpload.videoUrl;
+        thumbnailUrl = gUpload.thumbnailUrl;
+        publicId = gUpload.fileId;
+        durationSeconds = gUpload.durationSeconds;
+        isGoogleDriveUpload = true;
+      } catch (driveError) {
+        stderr.writeln('Google Drive upload thất bại: $driveError. Đang tự động fallback Cloudinary...');
+        final cloud = cloudinary;
+        if (cloud == null || !cloud.configured) rethrow;
+        final upload = await cloud.uploadVideo(
+          bytes: bytes,
+          filename: filename.isEmpty ? 'video.mp4' : filename,
+        );
+        videoUrl = upload.secureUrl;
+        thumbnailUrl = upload.thumbnailUrl;
+        publicId = upload.publicId;
+        durationSeconds = upload.durationSeconds;
+      }
+    } else {
+      final cloud = cloudinary;
+      if (cloud == null || !cloud.configured) {
+        throw ApiError(503, 'Chưa cấu hình dịch vụ lưu trữ.');
+      }
+      final upload = await cloud.uploadVideo(
+        bytes: bytes,
+        filename: filename.isEmpty ? 'video.mp4' : filename,
+      );
+      videoUrl = upload.secureUrl;
+      thumbnailUrl = upload.thumbnailUrl;
+      publicId = upload.publicId;
+      durationSeconds = upload.durationSeconds;
+    }
 
     try {
       final video = await db.insertVideo(
@@ -448,21 +494,25 @@ Handler createApi(
         tags: tags,
         ageRating: age,
         userKey: userKey,
-        videoUrl: upload.secureUrl,
-        thumbnailUrl: upload.thumbnailUrl,
-        publicId: upload.publicId,
-        durationSeconds: upload.durationSeconds,
+        videoUrl: videoUrl,
+        thumbnailUrl: thumbnailUrl,
+        publicId: publicId,
+        durationSeconds: durationSeconds,
       );
       if (video == null) {
         throw ApiError(500, 'Không lưu được video vào database.');
       }
       return _json(<String, Object?>{'video': video}, status: 201);
     } catch (error) {
-      // Tránh file mồ côi trên Cloudinary nếu bước lưu DB thất bại.
+      // Tránh file mồ côi nếu bước lưu DB thất bại.
       try {
-        await cloudinary.destroyVideo(upload.publicId);
+        if (isGoogleDriveUpload && googleDrive != null) {
+          await googleDrive.deleteVideo(publicId);
+        } else if (cloudinary != null) {
+          await cloudinary.destroyVideo(publicId);
+        }
       } catch (cleanupError) {
-        stderr.writeln('Không dọn được video Cloudinary: $cleanupError');
+        stderr.writeln('Không dọn được video mồ côi: $cleanupError');
       }
       rethrow;
     }
@@ -518,13 +568,20 @@ Handler createApi(
     if (deleted == null) {
       throw ApiError(404, 'Không tìm thấy video hoặc bạn không có quyền xoá.');
     }
-    var cloudinaryDeleted = false;
+    var storageDeleted = false;
     final publicId = deleted['publicId'] as String?;
+    final videoUrl = deleted['videoUrl'] as String? ?? '';
     if (publicId != null && publicId.isNotEmpty) {
-      if (cloudinary != null && cloudinary.configured) {
+      if (videoUrl.contains('drive.google.com') && googleDrive != null && googleDrive.configured) {
+        try {
+          storageDeleted = await googleDrive.deleteVideo(publicId);
+        } catch (error) {
+          stderr.writeln('Không xoá được video Google Drive $publicId: $error');
+        }
+      } else if (cloudinary != null && cloudinary.configured) {
         try {
           await cloudinary.destroyVideo(publicId);
-          cloudinaryDeleted = true;
+          storageDeleted = true;
         } catch (error) {
           stderr.writeln('Không xoá được video Cloudinary $publicId: $error');
         }
@@ -532,7 +589,7 @@ Handler createApi(
     }
     return _json(<String, Object?>{
       'deleted': true,
-      'cloudinaryDeleted': cloudinaryDeleted,
+      'storageDeleted': storageDeleted,
     });
   });
 

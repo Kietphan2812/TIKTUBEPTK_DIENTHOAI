@@ -11,6 +11,11 @@ class ServerConfig {
     this.smtpEmail = 'kietphan4444@gmail.com',
     this.smtpPassword = 'ptmibnyzmvhkmeig',
     this.gmailWebhookUrl = '',
+    this.googleServiceAccountJson = '',
+    this.googleDriveFolderId = '',
+    this.googleOAuthClientId = '',
+    this.googleOAuthClientSecret = '',
+    this.googleOAuthRefreshToken = '',
   });
 
   final String databaseUrl;
@@ -21,11 +26,25 @@ class ServerConfig {
   final String smtpEmail;
   final String smtpPassword;
   final String gmailWebhookUrl;
+  final String googleServiceAccountJson;
+  final String googleDriveFolderId;
+  final String googleOAuthClientId;
+  final String googleOAuthClientSecret;
+  final String googleOAuthRefreshToken;
 
   bool get hasCloudinary =>
       cloudinaryCloudName.isNotEmpty &&
       cloudinaryApiKey.isNotEmpty &&
       cloudinaryApiSecret.isNotEmpty;
+
+  bool get hasGoogleDrive {
+    final hasFolder = googleDriveFolderId.isNotEmpty;
+    final hasOAuth = googleOAuthClientId.isNotEmpty &&
+        googleOAuthClientSecret.isNotEmpty &&
+        googleOAuthRefreshToken.isNotEmpty;
+    final hasServiceAccount = googleServiceAccountJson.isNotEmpty;
+    return hasFolder && (hasOAuth || hasServiceAccount);
+  }
 
   static ServerConfig load() {
     final fileValues = _readDotEnv();
@@ -60,6 +79,17 @@ class ServerConfig {
       gmailWebhookUrl: read('GMAIL_WEBHOOK_URL').isNotEmpty
           ? read('GMAIL_WEBHOOK_URL')
           : 'https://script.google.com/macros/s/AKfycbzssK78yWjNNA9GN7y4ttHJ62IxEpux_PZC77maKByt3U24I7Jb9yPxgc5aRzpiLs0/exec',
+      googleServiceAccountJson: read('GOOGLE_SERVICE_ACCOUNT_JSON').isNotEmpty
+          ? read('GOOGLE_SERVICE_ACCOUNT_JSON')
+          : (File('service-account.json').existsSync()
+              ? 'service-account.json'
+              : (File('server/service-account.json').existsSync()
+                  ? 'server/service-account.json'
+                  : '')),
+      googleDriveFolderId: read('GOOGLE_DRIVE_FOLDER_ID'),
+      googleOAuthClientId: read('GOOGLE_OAUTH_CLIENT_ID'),
+      googleOAuthClientSecret: read('GOOGLE_OAUTH_CLIENT_SECRET'),
+      googleOAuthRefreshToken: read('GOOGLE_OAUTH_REFRESH_TOKEN'),
     );
   }
 

@@ -7,6 +7,7 @@ import 'package:tiktube_server/cloudinary.dart';
 import 'package:tiktube_server/config.dart';
 import 'package:tiktube_server/db.dart';
 import 'package:tiktube_server/email_service.dart';
+import 'package:tiktube_server/google_drive_service.dart';
 
 Future<void> main() async {
   final config = ServerConfig.load();
@@ -38,6 +39,21 @@ Future<void> main() async {
         : 'Cloudinary: đã cấu hình (${config.cloudinaryCloudName}).',
   );
 
+  final GoogleDriveService? googleDrive = config.hasGoogleDrive
+      ? GoogleDriveService(
+          serviceAccountJson: config.googleServiceAccountJson,
+          clientId: config.googleOAuthClientId,
+          clientSecret: config.googleOAuthClientSecret,
+          refreshToken: config.googleOAuthRefreshToken,
+          folderId: config.googleDriveFolderId,
+        )
+      : null;
+  stdout.writeln(
+    googleDrive == null
+        ? 'Google Drive (400GB+): chưa cấu hình (dùng Cloudinary làm chính).'
+        : 'Google Drive (400GB+): đã cấu hình (Folder: ${config.googleDriveFolderId}).',
+  );
+
   final EmailService emailService = EmailService(
     smtpEmail: config.smtpEmail,
     smtpPassword: config.smtpPassword,
@@ -46,7 +62,12 @@ Future<void> main() async {
   stdout.writeln('Gmail OTP Service: đã cấu hình (${config.smtpEmail}).');
 
   final server = await shelf_io.serve(
-    createApi(db, cloudinary: cloudinary, emailService: emailService),
+    createApi(
+      db,
+      cloudinary: cloudinary,
+      googleDrive: googleDrive,
+      emailService: emailService,
+    ),
     InternetAddress.anyIPv4,
     config.port,
   );
