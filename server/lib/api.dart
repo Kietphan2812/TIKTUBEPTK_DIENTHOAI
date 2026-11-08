@@ -5,6 +5,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:http/http.dart' as http;
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 
@@ -34,7 +35,10 @@ final Random _secureRandom = Random.secure();
 const Map<String, String> _corsHeaders = <String, String>{
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-  'access-control-allow-headers': 'Content-Type, Authorization',
+  'access-control-allow-headers':
+      'Content-Type, Authorization, Range, X-Requested-With',
+  'access-control-expose-headers':
+      'Content-Range, Accept-Ranges, Content-Length',
   'access-control-max-age': '86400',
 };
 
@@ -525,6 +529,65 @@ Handler createApi(
     if (video == null) throw ApiError(404, 'Không tìm thấy video.');
     final comments = await db.listComments(id, currentUser: userKey);
     return _json(<String, Object?>{'video': video, 'comments': comments});
+  });
+
+  Future<Response> handleDriveStream(Request request, String fileId) async {
+    final driveUrl =
+        'https://drive.usercontent.google.com/download?id=$fileId&export=download';
+    final client = http.Client();
+    final proxyReq = http.Request('GET', Uri.parse(driveUrl));
+    proxyReq.headers['User-Agent'] =
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+    final range = request.headers['range'];
+    if (range != null && range.isNotEmpty) {
+      proxyReq.headers['range'] = range;
+    }
+
+    try {
+      final streamed = await client.send(proxyReq);
+      final responseHeaders = <String, String>{
+        'content-type': streamed.headers['content-type'] ?? 'video/mp4',
+        'accept-ranges': 'bytes',
+        'cache-control': 'public, max-age=86400',
+      };
+      if (streamed.headers['content-range'] != null) {
+        responseHeaders['content-range'] = streamed.headers['content-range']!;
+      }
+      if (streamed.headers['content-length'] != null) {
+        responseHeaders['content-length'] = streamed.headers['content-length']!;
+      }
+
+      return Response(
+        streamed.statusCode,
+        body: streamed.stream,
+        headers: responseHeaders,
+      );
+    } catch (e) {
+      throw ApiError(500, 'Lỗi khi phát luồng video: $e');
+    }
+  }
+
+  router.get('/api/drive/stream', (Request request) async {
+    final id = request.url.queryParameters['id'] ?? '';
+    if (id.isEmpty) {
+      throw ApiError(400, 'Thiếu tham số id của tệp Google Drive.');
+    }
+    return handleDriveStream(request, id);
+  });
+
+  router.get('/api/videos/<id>/stream', (Request request, String id) async {
+    _validateId(id);
+    final video = await db.findVideo(id);
+    if (video == null) throw ApiError(404, 'Không tìm thấy video.');
+    final videoUrl = video['videoUrl']?.toString() ?? '';
+    if (videoUrl.isEmpty) throw ApiError(404, 'Video không có đường dẫn phát.');
+
+    final match = RegExp(r'[?&]id=([a-zA-Z0-9_-]+)').firstMatch(videoUrl);
+    if (match != null) {
+      return handleDriveStream(request, match.group(1)!);
+    }
+    return Response.found(Uri.parse(videoUrl));
   });
 
   router.patch('/api/videos/<id>', (Request request, String id) async {

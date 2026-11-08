@@ -54,7 +54,18 @@ class _QuickWatchPageState extends State<QuickWatchPage> {
   bool _showFitHint = false;
   Timer? _fitHintTimer;
 
-  String? get _url => widget.video.videoUrl;
+  String? get _url {
+    final raw = widget.video.videoUrl;
+    if (raw == null || raw.trim().isEmpty) return null;
+    final trimmed = raw.trim();
+    if (trimmed.contains('drive.google.com') && trimmed.contains('id=')) {
+      final match = RegExp(r'[?&]id=([a-zA-Z0-9_-]+)').firstMatch(trimmed);
+      if (match != null) {
+        return 'https://tiktube-api.onrender.com/api/drive/stream?id=${match.group(1)}';
+      }
+    }
+    return trimmed;
+  }
 
   bool get _is18Blocked {
     if (!widget.video.is18Plus) return false;

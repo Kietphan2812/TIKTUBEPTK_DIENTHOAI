@@ -2003,7 +2003,7 @@ on conflict (nguoi_dung_id, ngay) do update set
       'isLive': false,
       'description': row[7]?.toString() ?? '',
       'likeCount': _asInt(row[10]) ?? 0,
-      'videoUrl': row[8]?.toString(),
+      'videoUrl': _resolveVideoUrl(row[8]?.toString()),
       'thumbnailUrl': _thumbnailUrl(
         row[9]?.toString(),
         row[8]?.toString(),
@@ -2066,6 +2066,20 @@ on conflict (nguoi_dung_id, ngay) do update set
     if (date == null) return '';
     final local = date.toLocal();
     return '${local.day}/${local.month}/${local.year}';
+  }
+
+  static String? _resolveVideoUrl(String? rawUrl) {
+    if (rawUrl == null || rawUrl.trim().isEmpty) return null;
+    final trimmed = rawUrl.trim();
+    if (trimmed.contains('drive.google.com') ||
+        trimmed.contains('drive.usercontent.google.com')) {
+      final match = RegExp(r'[?&]id=([a-zA-Z0-9_-]+)').firstMatch(trimmed);
+      if (match != null) {
+        final fileId = match.group(1);
+        return 'https://tiktube-api.onrender.com/api/drive/stream?id=$fileId';
+      }
+    }
+    return trimmed;
   }
 
   static String? _thumbnailUrl(String? thumbnail, String? videoUrl) {

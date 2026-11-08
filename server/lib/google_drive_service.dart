@@ -136,7 +136,8 @@ class GoogleDriveService {
     } catch (_) {}
 
     // Link stream trực tiếp cho trình phát video
-    final videoUrl = 'https://drive.google.com/uc?export=download&id=$fileId';
+    final videoUrl =
+        'https://tiktube-api.onrender.com/api/drive/stream?id=$fileId';
     final thumbUrl = uploaded.thumbnailLink ??
         'https://res.cloudinary.com/qfgja134/video/upload/so_2,w_640,h_360,c_fill/$fileId.jpg';
 
