@@ -97,13 +97,18 @@ class _CallOverlayState extends State<CallOverlay>
 
     if (!widget.isIncoming) {
       ChatService.instance.initiateCall(widget.friend.id, isVideo: widget.isVideo);
-      Timer(const Duration(milliseconds: 3000), () {
+      // Tự động kết thúc nếu đối phương không nhấc máy sau 45 giây
+      _callTimer = Timer(const Duration(seconds: 45), () {
         if (!mounted || _connected) return;
-        setState(() => _connected = true);
-        if (widget.isVideo) {
-          unawaited(_initCamera());
+        if (mounted) {
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            const SnackBar(
+              content: Text('Người nhận hiện không trả lời'),
+              duration: Duration(seconds: 2),
+            ),
+          );
         }
-        _startTimer();
+        _hangup();
       });
     }
 
@@ -111,14 +116,27 @@ class _CallOverlayState extends State<CallOverlay>
       if (!mounted) return;
       final type = event['type']?.toString();
       if (type == 'answered') {
+        _callTimer?.cancel();
         if (!_connected) {
           setState(() => _connected = true);
-          if (widget.isVideo) {
+          if (widget.isVideo && !_isCameraInitialized) {
             unawaited(_initCamera());
           }
           _startTimer();
         }
-      } else if (type == 'ended' || type == 'rejected') {
+      } else if (type == 'rejected') {
+        _callTimer?.cancel();
+        if (mounted) {
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            const SnackBar(
+              content: Text('Người nhận đã từ chối cuộc gọi'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+        _hangup();
+      } else if (type == 'ended') {
+        _callTimer?.cancel();
         _hangup();
       }
     });
