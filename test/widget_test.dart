@@ -849,6 +849,11 @@ void main() {
 
     expect(find.text('Bình luận'), findsOneWidget);
     expect(find.text('Video liên quan'), findsOneWidget);
+
+    // Mở phần bình luận (do mặc định thu gọn theo yêu cầu)
+    await tester.tap(find.text('Bình luận'));
+    await tester.pumpAndSettle();
+
     expect(find.text('Viết bình luận...'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField), 'hay quá');

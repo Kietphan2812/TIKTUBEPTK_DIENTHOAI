@@ -31,6 +31,7 @@ class Video {
     this.liked = false,
     this.saved = false,
     this.isKidsOnly = true,
+    this.authorAvatarUrl,
   });
 
   final String id;
@@ -60,6 +61,9 @@ class Video {
   final int subscriberCount;
   final bool subscribed;
   final String uploadedBy;
+
+  /// Ảnh đại diện kênh / tác giả từ Neon Postgres
+  final String? authorAvatarUrl;
 
   /// Trạng thái kiểm duyệt của web: `da_duyet`, `cho_duyet`, `tu_choi`.
   final String status;
@@ -172,6 +176,7 @@ class Video {
       liked: json['liked'] as bool? ?? false,
       saved: json['saved'] as bool? ?? false,
       isKidsOnly: isKids,
+      authorAvatarUrl: _emptyToNull(json['authorAvatarUrl']?.toString() ?? json['author_avatar_url']?.toString()),
     );
   }
 
@@ -188,6 +193,7 @@ class Video {
     bool? liked,
     bool? saved,
     bool? isKidsOnly,
+    String? authorAvatarUrl,
   }) {
     return Video(
       id: id,
@@ -218,6 +224,7 @@ class Video {
       liked: liked ?? this.liked,
       saved: saved ?? this.saved,
       isKidsOnly: isKidsOnly ?? this.isKidsOnly,
+      authorAvatarUrl: authorAvatarUrl ?? this.authorAvatarUrl,
     );
   }
 

@@ -293,6 +293,16 @@ class _VideoSurfaceState extends State<VideoSurface> {
                                 : 'Bật tiếng',
                             visualDensity: VisualDensity.compact,
                           ),
+                          IconButton(
+                            onPressed: () => _openFullScreen(context, controller),
+                            icon: const Icon(
+                              Icons.fullscreen_rounded,
+                              color: Colors.white,
+                              size: 22,
+                            ),
+                            tooltip: 'Toàn màn hình',
+                            visualDensity: VisualDensity.compact,
+                          ),
                         ],
                       ),
                     ],
@@ -306,9 +316,255 @@ class _VideoSurfaceState extends State<VideoSurface> {
     );
   }
 
+  void _openFullScreen(BuildContext context, VideoPlayerController controller) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (ctx) => _FullScreenVideoPlayer(
+          controller: controller,
+          video: widget.video,
+        ),
+      ),
+    );
+  }
+
   static String _format(Duration duration) {
     final minutes = duration.inMinutes;
     final seconds = duration.inSeconds % 60;
     return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+}
+
+/// Màn hình phát video toàn màn hình
+class _FullScreenVideoPlayer extends StatefulWidget {
+  const _FullScreenVideoPlayer({
+    required this.controller,
+    required this.video,
+  });
+
+  final VideoPlayerController controller;
+  final Video video;
+
+  @override
+  State<_FullScreenVideoPlayer> createState() => _FullScreenVideoPlayerState();
+}
+
+class _FullScreenVideoPlayerState extends State<_FullScreenVideoPlayer> {
+  bool _showControls = true;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onControllerChange);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onControllerChange);
+    super.dispose();
+  }
+
+  void _onControllerChange() {
+    if (mounted) setState(() {});
+  }
+
+  void _togglePlay() {
+    setState(() {
+      if (widget.controller.value.isPlaying) {
+        widget.controller.pause();
+      } else {
+        widget.controller.play();
+      }
+    });
+  }
+
+  static String _fmt(Duration d) {
+    final m = d.inMinutes;
+    final s = d.inSeconds % 60;
+    return '$m:${s.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = widget.controller;
+    final value = controller.value;
+    final aspect = value.aspectRatio > 0 ? value.aspectRatio : 16 / 9;
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: GestureDetector(
+          onTap: () => setState(() => _showControls = !_showControls),
+          behavior: HitTestBehavior.opaque,
+          child: Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              Center(
+                child: AspectRatio(
+                  aspectRatio: aspect,
+                  child: VideoPlayer(controller),
+                ),
+              ),
+              if (!value.isPlaying && _showControls)
+                Center(
+                  child: GestureDetector(
+                    onTap: _togglePlay,
+                    child: Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.black.withValues(alpha: 0.55),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.8),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.play_arrow_rounded,
+                        color: Colors.white,
+                        size: 44,
+                      ),
+                    ),
+                  ),
+                ),
+              // Top Bar
+              if (_showControls)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: <Color>[
+                          Colors.black.withValues(alpha: 0.8),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                    child: Row(
+                      children: <Widget>[
+                        IconButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                          tooltip: 'Thoát toàn màn hình',
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            widget.video.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(Icons.fullscreen_exit_rounded, color: Colors.white, size: 24),
+                          tooltip: 'Thu nhỏ',
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              // Bottom Controls
+              if (_showControls)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: <Color>[
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.85),
+                        ],
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        VideoProgressIndicator(
+                          controller,
+                          allowScrubbing: true,
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          colors: VideoProgressColors(
+                            playedColor: const Color(0xFFE8112D),
+                            bufferedColor: Colors.white.withValues(alpha: 0.35),
+                            backgroundColor: Colors.white.withValues(alpha: 0.2),
+                          ),
+                        ),
+                        Row(
+                          children: <Widget>[
+                            IconButton(
+                              onPressed: _togglePlay,
+                              icon: Icon(
+                                value.isPlaying
+                                    ? Icons.pause_rounded
+                                    : Icons.play_arrow_rounded,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                              tooltip: value.isPlaying ? 'Tạm dừng' : 'Phát',
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${_fmt(value.position)} / ${_fmt(value.duration)}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const Spacer(),
+                            IconButton(
+                              onPressed: () {
+                                controller.setVolume(
+                                  controller.value.volume > 0 ? 0 : 1,
+                                );
+                                setState(() {});
+                              },
+                              icon: Icon(
+                                controller.value.volume > 0
+                                    ? Icons.volume_up_rounded
+                                    : Icons.volume_off_rounded,
+                                color: Colors.white,
+                                size: 22,
+                              ),
+                              tooltip: controller.value.volume > 0
+                                  ? 'Tắt tiếng'
+                                  : 'Bật tiếng',
+                            ),
+                            IconButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              icon: const Icon(
+                                Icons.fullscreen_exit_rounded,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                              tooltip: 'Thu nhỏ',
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

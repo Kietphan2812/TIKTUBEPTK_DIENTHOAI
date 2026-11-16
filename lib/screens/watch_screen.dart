@@ -1,15 +1,19 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'account_screen.dart';
 import 'auth_screen.dart';
 import 'chat_screen.dart';
 
 import '../auth/auth_scope.dart';
+import '../data/chat_service.dart';
 import '../data/tiktube_api.dart';
+import '../models/chat_contact.dart';
 import '../models/comment.dart';
 import '../models/video.dart';
 import '../theme/app_theme.dart';
+import '../utils/video_downloader.dart';
 import '../widgets/channel_avatar.dart';
 import '../widgets/data_state.dart';
 import '../widgets/section_top_bar.dart';
@@ -40,6 +44,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   bool _disliked = false;
   int _likeCount = 0;
   int _subscriberCount = 0;
+  bool _commentsExpanded = false;
 
   final TextEditingController _commentController = TextEditingController();
   final FocusNode _commentFocusNode = FocusNode();
@@ -59,6 +64,8 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _subscribed = widget.video.subscribed;
+    _liked = widget.video.liked;
+    _disliked = false;
     _likeCount = widget.video.likeCount;
     _subscriberCount = widget.video.subscriberCount;
     _durationSeconds = widget.video.duration.inSeconds;
@@ -68,6 +75,24 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       const Duration(seconds: 10),
       (_) => _saveWatchProgress(),
     );
+  }
+
+  @override
+  void didUpdateWidget(covariant WatchScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.video.id != widget.video.id) {
+      _subscribed = widget.video.subscribed;
+      _liked = widget.video.liked;
+      _disliked = false;
+      _likeCount = widget.video.likeCount;
+      _subscriberCount = widget.video.subscriberCount;
+      _durationSeconds = widget.video.duration.inSeconds;
+      _watchedSeconds = 0;
+      _lastSavedSeconds = 0;
+      _commentsExpanded = false;
+      unawaited(_loadComments());
+      unawaited(_registerView());
+    }
   }
 
   void _handlePlaybackProgress(VideoPlaybackProgress progress) {
@@ -255,6 +280,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
 
   void _startReply(Comment comment) {
     setState(() {
+      _commentsExpanded = true;
       _replyingTo = comment;
       if (comment.id != null) {
         _expandedReplyIds.add(comment.id!);
@@ -371,6 +397,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   void _toggleLike() {
+    if (AuthScope.maybeOf(context)?.profile == null) {
+      _notify('Vui lòng đăng nhập để thích video.');
+      return;
+    }
     final bool next = !_liked;
     setState(() {
       _liked = next;
@@ -382,6 +412,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
   }
 
   void _toggleDislike() {
+    if (AuthScope.maybeOf(context)?.profile == null) {
+      _notify('Vui lòng đăng nhập để thực hiện thao tác này.');
+      return;
+    }
     setState(() {
       _disliked = !_disliked;
       if (_disliked && _liked) {
@@ -390,6 +424,31 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
         unawaited(_syncLike(false));
       }
     });
+  }
+
+  void _showShareModal(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _ShareModalSheet(
+        video: widget.video,
+        onNotify: _notify,
+      ),
+    );
+  }
+
+  Future<void> _downloadVideo() async {
+    _notify('Đang chuẩn bị tải video "${widget.video.title}" về máy...');
+    try {
+      await VideoDownloader.downloadVideo(
+        videoId: widget.video.id,
+        title: widget.video.title,
+        directUrl: widget.video.videoUrl,
+      );
+    } catch (_) {
+      _notify('Không thể tải video, vui lòng thử lại.');
+    }
   }
 
   List<Video> _relatedVideos() {
@@ -487,6 +546,11 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     onToggleCommentLike: _toggleCommentLike,
                     onNotify: _notify,
                     onProgress: _handlePlaybackProgress,
+                    commentsExpanded: _commentsExpanded,
+                    onToggleCommentsExpanded: () =>
+                        setState(() => _commentsExpanded = !_commentsExpanded),
+                    onShare: () => _showShareModal(context),
+                    onDownload: _downloadVideo,
                   );
 
                   final Widget sidebar = _RelatedList(
@@ -576,6 +640,10 @@ class _MainColumn extends StatelessWidget {
     required this.onToggleCommentLike,
     required this.onNotify,
     required this.onProgress,
+    required this.commentsExpanded,
+    required this.onToggleCommentsExpanded,
+    required this.onShare,
+    required this.onDownload,
   });
 
   final Video video;
@@ -608,6 +676,10 @@ class _MainColumn extends StatelessWidget {
   final ValueChanged<Comment> onToggleCommentLike;
   final ValueChanged<String> onNotify;
   final ValueChanged<VideoPlaybackProgress> onProgress;
+  final bool commentsExpanded;
+  final VoidCallback onToggleCommentsExpanded;
+  final VoidCallback onShare;
+  final VoidCallback onDownload;
 
   @override
   Widget build(BuildContext context) {
@@ -788,6 +860,8 @@ class _MainColumn extends StatelessWidget {
           onToggleLike: onToggleLike,
           onToggleDislike: onToggleDislike,
           onNotify: onNotify,
+          onShare: onShare,
+          onDownload: onDownload,
         ),
         const SizedBox(height: 14),
         Text(
@@ -816,126 +890,206 @@ class _MainColumn extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         Divider(color: p.border),
-        const SizedBox(height: 14),
-        Text(
-          'Bình luận',
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.2,
-            color: p.textPrimary,
-          ),
-        ),
-        const SizedBox(height: 12),
-        // Banner thông báo đang phản hồi
-        if (replyingTo != null) ...<Widget>[
-          Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        const SizedBox(height: 10),
+        // Khung hiển thị bình luận thu gọn theo yêu cầu
+        InkWell(
+          onTap: onToggleCommentsExpanded,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
               color: p.chip,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(color: p.border.withValues(alpha: 0.6)),
             ),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                const Icon(
-                  Icons.reply_rounded,
-                  size: 16,
-                  color: Color(0xFF065FD4),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    'Đang phản hồi @${replyingTo!.author}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: p.textPrimary,
+                Row(
+                  children: <Widget>[
+                    Text(
+                      'Bình luận',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.2,
+                        color: p.textPrimary,
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: p.surface,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '${comments.length}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: p.textPrimary,
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    Icon(
+                      commentsExpanded
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      color: p.textSecondary,
+                      size: 22,
+                    ),
+                  ],
                 ),
-                GestureDetector(
-                  onTap: onCancelReply,
-                  child: Icon(
-                    Icons.close_rounded,
-                    size: 16,
-                    color: p.textSecondary,
-                  ),
-                ),
+                if (!commentsExpanded) ...<Widget>[
+                  const SizedBox(height: 10),
+                  if (commentsLoading)
+                    Text(
+                      'Đang tải bình luận...',
+                      style: TextStyle(fontSize: 12, color: p.textSecondary),
+                    )
+                  else if (comments.isNotEmpty) ...<Widget>[
+                    Row(
+                      children: <Widget>[
+                        _CommentAvatar(author: comments.first.author, size: 24),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            comments.first.content,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: p.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ] else ...<Widget>[
+                    Text(
+                      'Chưa có bình luận. Nhấn để là người đầu tiên bình luận!',
+                      style: TextStyle(fontSize: 12, color: p.textSecondary),
+                    ),
+                  ],
+                ],
               ],
             ),
           ),
-        ],
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            _CommentAvatar(author: currentUserName, size: 30),
-            const SizedBox(width: 10),
-            Expanded(
-              child: TextField(
-                controller: commentController,
-                focusNode: commentFocusNode,
-                minLines: 1,
-                maxLines: 3,
-                onSubmitted: (_) => onAddComment(),
-                style: TextStyle(fontSize: 12, color: p.textPrimary),
-                decoration: InputDecoration(
-                  isDense: true,
-                  hintText: replyingTo != null
-                      ? 'Viết phản hồi cho @${replyingTo!.author}...'
-                      : 'Viết bình luận...',
-                  hintStyle: TextStyle(
-                    fontSize: 12,
-                    color: p.textSecondary.withValues(alpha: 0.8),
+        ),
+        if (commentsExpanded) ...<Widget>[
+          const SizedBox(height: 14),
+          // Banner thông báo đang phản hồi
+          if (replyingTo != null) ...<Widget>[
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: p.chip,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: p.border.withValues(alpha: 0.6)),
+              ),
+              child: Row(
+                children: <Widget>[
+                  const Icon(
+                    Icons.reply_rounded,
+                    size: 16,
+                    color: Color(0xFF065FD4),
                   ),
-                  contentPadding: const EdgeInsets.only(bottom: 6),
-                  border: UnderlineInputBorder(
-                    borderSide: BorderSide(color: p.border),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Đang phản hồi @${replyingTo!.author}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: p.textPrimary,
+                      ),
+                    ),
                   ),
-                  enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: p.border),
+                  GestureDetector(
+                    onTap: onCancelReply,
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: 16,
+                      color: p.textSecondary,
+                    ),
                   ),
-                  focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: p.textSecondary),
+                ],
+              ),
+            ),
+          ],
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              _CommentAvatar(author: currentUserName, size: 30),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextField(
+                  controller: commentController,
+                  focusNode: commentFocusNode,
+                  minLines: 1,
+                  maxLines: 3,
+                  onSubmitted: (_) => onAddComment(),
+                  style: TextStyle(fontSize: 12, color: p.textPrimary),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: replyingTo != null
+                        ? 'Viết phản hồi cho @${replyingTo!.author}...'
+                        : 'Viết bình luận...',
+                    hintStyle: TextStyle(
+                      fontSize: 12,
+                      color: p.textSecondary.withValues(alpha: 0.8),
+                    ),
+                    contentPadding: const EdgeInsets.only(bottom: 6),
+                    border: UnderlineInputBorder(
+                      borderSide: BorderSide(color: p.border),
+                    ),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: p.border),
+                    ),
+                    focusedBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: p.textSecondary),
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 6),
-            IconButton(
-              onPressed: onAddComment,
-              tooltip: 'Gửi bình luận',
-              icon: Icon(Icons.send_rounded, size: 17, color: p.textSecondary),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        if (commentsLoading)
-          const DataLoading(message: 'Đang tải bình luận từ Neon...')
-        else if (commentsError != null)
-          DataError(message: commentsError!, onRetry: onReloadComments)
-        else ...<Widget>[
-          if (comments.isEmpty)
-            Text(
-              'Chưa có bình luận nào. Hãy là người đầu tiên!',
-              style: TextStyle(fontSize: 11.5, color: p.textSecondary),
-            )
-          else
-            for (final Comment comment in comments) ...<Widget>[
-              _CommentTile(
-                comment: comment,
-                onDelete: () => onDeleteComment(comment),
-                onReply: () => onStartReply(comment),
-                onLike: () => onToggleCommentLike(comment),
-                isExpanded:
-                    comment.id != null && expandedReplyIds.contains(comment.id),
-                onToggleReplies: comment.id != null
-                    ? () => onToggleReplies(comment.id!)
-                    : null,
+              const SizedBox(width: 6),
+              IconButton(
+                onPressed: onAddComment,
+                tooltip: 'Gửi bình luận',
+                icon: Icon(Icons.send_rounded, size: 17, color: p.textSecondary),
               ),
-              const SizedBox(height: 12),
             ],
+          ),
+          const SizedBox(height: 14),
+          if (commentsLoading)
+            const DataLoading(message: 'Đang tải bình luận từ Neon...')
+          else if (commentsError != null)
+            DataError(message: commentsError!, onRetry: onReloadComments)
+          else ...<Widget>[
+            if (comments.isEmpty)
+              Text(
+                'Chưa có bình luận nào. Hãy là người đầu tiên!',
+                style: TextStyle(fontSize: 11.5, color: p.textSecondary),
+              )
+            else
+              for (final Comment comment in comments) ...<Widget>[
+                _CommentTile(
+                  comment: comment,
+                  onDelete: () => onDeleteComment(comment),
+                  onReply: () => onStartReply(comment),
+                  onLike: () => onToggleCommentLike(comment),
+                  isExpanded:
+                      comment.id != null && expandedReplyIds.contains(comment.id),
+                  onToggleReplies: comment.id != null
+                      ? () => onToggleReplies(comment.id!)
+                      : null,
+                ),
+                const SizedBox(height: 12),
+              ],
+          ],
         ],
       ],
     );
@@ -1006,6 +1160,8 @@ class _YouTubeActionBar extends StatelessWidget {
     required this.onToggleLike,
     required this.onToggleDislike,
     required this.onNotify,
+    required this.onShare,
+    required this.onDownload,
   });
 
   final bool liked;
@@ -1014,6 +1170,8 @@ class _YouTubeActionBar extends StatelessWidget {
   final VoidCallback onToggleLike;
   final VoidCallback onToggleDislike;
   final ValueChanged<String> onNotify;
+  final VoidCallback onShare;
+  final VoidCallback onDownload;
 
   @override
   Widget build(BuildContext context) {
@@ -1034,7 +1192,7 @@ class _YouTubeActionBar extends StatelessWidget {
           _YouTubePillButton(
             icon: Icons.reply_rounded,
             label: 'Chia sẻ',
-            onTap: () => onNotify('Đã sao chép liên kết video.'),
+            onTap: onShare,
           ),
           const SizedBox(width: 8),
           _YouTubePillButton(
@@ -1058,7 +1216,7 @@ class _YouTubeActionBar extends StatelessWidget {
           _YouTubePillButton(
             icon: Icons.download_rounded,
             label: 'Tải xuống',
-            onTap: () => onNotify('Đang chuẩn bị tải video về máy...'),
+            onTap: onDownload,
           ),
           const SizedBox(width: 8),
           _YouTubeCircleButton(
@@ -1559,8 +1717,7 @@ class _CommentAvatar extends StatelessWidget {
   final String author;
   final double size;
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildFallback() {
     const List<List<Color>> gradients = <List<Color>>[
       <Color>[Color(0xFF4B4F63), Color(0xFF22242E)],
       <Color>[Color(0xFF7A5CC4), Color(0xFF4B3F8F)],
@@ -1593,6 +1750,45 @@ class _CommentAvatar extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = AuthScope.maybeOf(context)?.profile;
+    String? effectiveAvatar;
+    if (profile != null) {
+      final a = author.trim().toLowerCase();
+      final pName = profile.name.trim().toLowerCase();
+      final pKey = profile.userKey.trim().toLowerCase();
+      if (a.isNotEmpty && (a == pName || a == pKey)) {
+        effectiveAvatar = profile.avatarUrl;
+      }
+    }
+
+    if (effectiveAvatar != null && effectiveAvatar.trim().isNotEmpty) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: context.palette.surface.withValues(alpha: 0.7),
+            width: 1,
+          ),
+        ),
+        child: ClipOval(
+          child: Image.network(
+            effectiveAvatar.trim(),
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => _buildFallback(),
+          ),
+        ),
+      );
+    }
+
+    return _buildFallback();
   }
 }
 
@@ -1871,6 +2067,329 @@ class _AgeGateCinemaBox extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Modal chia sẻ video cho bạn bè qua chat hoặc sao chép liên kết
+class _ShareModalSheet extends StatefulWidget {
+  const _ShareModalSheet({
+    required this.video,
+    required this.onNotify,
+  });
+
+  final Video video;
+  final ValueChanged<String> onNotify;
+
+  @override
+  State<_ShareModalSheet> createState() => _ShareModalSheetState();
+}
+
+class _ShareModalSheetState extends State<_ShareModalSheet> {
+  final Set<String> _sentFriendIds = <String>{};
+
+  String get _shareUrl =>
+      'https://tiktube-api.onrender.com/api/videos/${widget.video.id}/stream';
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final friends = ChatService.instance.friends
+        .where((Friend f) => f.id != 'my_cloud')
+        .toList();
+
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.75,
+      ),
+      decoration: BoxDecoration(
+        color: p.surfaceAlt,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 16,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            // Thanh kéo nhỏ
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(top: 10, bottom: 6),
+                width: 38,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: p.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            // Tiêu đề
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: Row(
+                children: <Widget>[
+                  Text(
+                    'Chia sẻ video',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: p.textPrimary,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: Icon(Icons.close_rounded, color: p.textSecondary),
+                    onPressed: () => Navigator.of(context).pop(),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ],
+              ),
+            ),
+            // Xem trước video
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: p.chip,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: p.border.withValues(alpha: 0.5)),
+              ),
+              child: Row(
+                children: <Widget>[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: SizedBox(
+                      width: 64,
+                      height: 38,
+                      child: VideoThumb(video: widget.video, radius: 0),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          widget.video.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: p.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          widget.video.channel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: p.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Nút sao chép liên kết
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: InkWell(
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: _shareUrl));
+                  Navigator.of(context).pop();
+                  widget.onNotify('Đã sao chép liên kết video!');
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: p.chip,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: p.surface,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.link_rounded, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              'Sao chép liên kết',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: p.textPrimary,
+                              ),
+                            ),
+                            Text(
+                              _shareUrl,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                color: p.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.copy_rounded, size: 18),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Divider(color: p.border, height: 16),
+            // Gửi cho bạn bè trong tin nhắn
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: Text(
+                'Gửi cho bạn bè trong tin nhắn',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: p.textPrimary,
+                ),
+              ),
+            ),
+            if (friends.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: <Widget>[
+                    Icon(Icons.people_outline_rounded, size: 36, color: p.textSecondary),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Chưa có bạn bè trong danh bạ.\nHãy vào mục Nhắn tin để kết bạn và chia sẻ video!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12, color: p.textSecondary),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Expanded(
+                child: ListView.separated(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  itemCount: friends.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  itemBuilder: (BuildContext ctx, int index) {
+                    final friend = friends[index];
+                    final bool sent = _sentFriendIds.contains(friend.id);
+
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: p.chip,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        children: <Widget>[
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: const BoxDecoration(shape: BoxShape.circle),
+                            child: ClipOval(
+                              child: friend.avatar.isNotEmpty
+                                  ? Image.network(
+                                      friend.avatar,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, _, _) => _initialAvatar(friend),
+                                    )
+                                  : _initialAvatar(friend),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  friend.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: p.textPrimary,
+                                  ),
+                                ),
+                                Text(
+                                  friend.isOnline ? 'Đang hoạt động' : friend.phone,
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    color: friend.isOnline ? const Color(0xFF22C55E) : p.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          ElevatedButton(
+                            onPressed: sent
+                                ? null
+                                : () async {
+                                    setState(() => _sentFriendIds.add(friend.id));
+                                    await ChatService.instance.sendMessage(
+                                      friend.id,
+                                      '🎬 Xem video này trên TIKTUBE:\n${widget.video.title}\n$_shareUrl',
+                                    );
+                                    widget.onNotify('Đã gửi video cho ${friend.name}!');
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: sent ? p.border : const Color(0xFFE50914),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                              visualDensity: VisualDensity.compact,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                            ),
+                            child: Text(
+                              sent ? 'Đã gửi' : 'Gửi',
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _initialAvatar(Friend friend) {
+    return Container(
+      color: const Color(0xFF3B4252),
+      alignment: Alignment.center,
+      child: Text(
+        friend.name.isNotEmpty ? friend.name.substring(0, 1).toUpperCase() : '?',
+        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
       ),
     );
   }

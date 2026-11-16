@@ -1031,7 +1031,6 @@ class _MobileBottomNav extends StatelessWidget {
                   label: 'Xem video',
                   onTap: () => onTap('Xem video'),
                 ),
-                _MobileUploadButton(onTap: () => onTap('Đăng Video')),
                 ListenableBuilder(
                   listenable: ChatService.instance,
                   builder: (context, _) {
@@ -1044,6 +1043,7 @@ class _MobileBottomNav extends StatelessWidget {
                     );
                   },
                 ),
+                _MobileUploadButton(onTap: () => onTap('Đăng Video')),
                 _MobileNavButton(
                   icon: Icons.subscriptions_outlined,
                   label: 'Đăng ký',
@@ -1160,26 +1160,26 @@ class _MobileUploadButton extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
             Container(
-              width: 36,
-              height: 36,
+              width: 28,
+              height: 28,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: LinearGradient(colors: p.ctaGradient),
                 boxShadow: <BoxShadow>[
                   BoxShadow(
                     color: p.brandPink.withValues(alpha: 0.28),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
                   ),
                 ],
               ),
               child: const Icon(
                 Icons.add_rounded,
-                size: 23,
+                size: 20,
                 color: Colors.white,
               ),
             ),
-            const SizedBox(height: 1),
+            const SizedBox(height: 2),
             Text(
               'Đăng',
               style: TextStyle(

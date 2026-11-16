@@ -74,6 +74,22 @@ class MainActivity : FlutterActivity() {
                         result.error("ERROR", e.message, null)
                     }
                 }
+                "openUrl" -> {
+                    try {
+                        val url = call.argument<String>("url")
+                        if (url != null) {
+                            val browserIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(browserIntent)
+                            result.success(true)
+                        } else {
+                            result.error("INVALID_URL", "URL is null", null)
+                        }
+                    } catch (e: Exception) {
+                        result.error("ERROR", e.message, null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }

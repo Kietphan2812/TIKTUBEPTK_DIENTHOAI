@@ -590,6 +590,29 @@ Handler createApi(
     return Response.found(Uri.parse(videoUrl));
   });
 
+  router.get('/api/videos/<id>/download', (Request request, String id) async {
+    _validateId(id);
+    final video = await db.findVideo(id);
+    if (video == null) throw ApiError(404, 'Không tìm thấy video.');
+    final videoUrl = video['videoUrl']?.toString() ?? '';
+    if (videoUrl.isEmpty) throw ApiError(404, 'Video không có đường dẫn phát.');
+
+    final rawTitle = (video['title']?.toString() ?? 'tiktube_video_$id').trim();
+    final safeTitle = rawTitle.replaceAll(RegExp(r'[\/\\:*?"<>|]'), '_');
+    final filename = Uri.encodeComponent('$safeTitle.mp4');
+
+    final match = RegExp(r'[?&]id=([a-zA-Z0-9_-]+)').firstMatch(videoUrl);
+    if (match != null) {
+      final res = await handleDriveStream(request, match.group(1)!);
+      return res.change(headers: {
+        'content-disposition': "attachment; filename*=UTF-8''$filename",
+      });
+    }
+    return Response.found(Uri.parse(videoUrl), headers: {
+      'content-disposition': "attachment; filename*=UTF-8''$filename",
+    });
+  });
+
   router.patch('/api/videos/<id>', (Request request, String id) async {
     _validateId(id);
     final session = await _requireSession(db, request);

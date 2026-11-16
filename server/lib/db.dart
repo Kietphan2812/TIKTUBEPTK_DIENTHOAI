@@ -1531,7 +1531,7 @@ limit @limit
     );
     return result.map((row) {
       final video = _videoFromRow(row);
-      final watchedAt = row[19] as DateTime?;
+      final watchedAt = row[20] as DateTime?;
       video['watchedAt'] = watchedAt?.toUtc().toIso8601String() ?? '';
       return video;
     }).toList();
@@ -1968,15 +1968,15 @@ on conflict (nguoi_dung_id, ngay) do update set
   static Map<String, Object?> _trendingVideoFromRow(ResultRow row) {
     final video = _videoFromRow(row);
     // Hai cột cuối chỉ xuất hiện trong truy vấn xếp hạng xu hướng.
-    video['trendScore'] = _asInt(row[19]) ?? 0;
-    video['recentViews'] = _asInt(row[20]) ?? 0;
+    video['trendScore'] = _asInt(row[20]) ?? 0;
+    video['recentViews'] = _asInt(row[21]) ?? 0;
     return video;
   }
 
   static Map<String, Object?> _forYouVideoFromRow(ResultRow row) {
     final video = _videoFromRow(row);
-    video['recommendationScore'] = _asInt(row[19]) ?? 0;
-    video['recommendationReason'] = row[20]?.toString() ?? 'trending';
+    video['recommendationScore'] = _asInt(row[20]) ?? 0;
+    video['recommendationReason'] = row[21]?.toString() ?? 'trending';
     return video;
   }
 
@@ -2017,6 +2017,7 @@ on conflict (nguoi_dung_id, ngay) do update set
       'status': status,
       'liked': row[17] as bool? ?? false,
       'saved': row[18] as bool? ?? false,
+      'authorAvatarUrl': row.length > 19 ? row[19]?.toString() : null,
     };
   }
 
@@ -2216,6 +2217,7 @@ exists(
   select 1 from app_saved_videos svs
   where svs.video_id = v.video_id
     and svs.nguoi_dung_id = coalesce(@currentUserId::int, -1)
-) as saved
+) as saved,
+u.anh_dai_dien
 ''';
 }
