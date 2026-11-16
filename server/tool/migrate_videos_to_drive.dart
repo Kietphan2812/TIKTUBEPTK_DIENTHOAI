@@ -31,7 +31,7 @@ Future<void> main() async {
     select video_id, tieu_de, duong_dan_video
     from video
     where duong_dan_video is not null
-      and duong_dan_video not like '%drive.google.com%'
+      and duong_dan_video like '%cloudinary%'
     order by video_id asc
   ''');
 
