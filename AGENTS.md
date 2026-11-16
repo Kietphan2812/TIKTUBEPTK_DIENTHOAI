@@ -291,6 +291,20 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
 
 ---
 
+### 3.20. Hỗ trợ người dùng iOS qua PWA (Progressive Web App) & GitHub Pages
+- **Cấu hình PWA cho iOS (`web/index.html` & `web/manifest.json`):**
+  - Thẻ nhận diện đặc quyền Apple: `<meta name="apple-mobile-web-app-capable" content="yes">`, `<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">`, `<meta name="apple-mobile-web-app-title" content="TIKTUBE">`.
+  - Icon PWA: Cung cấp `apple-touch-icon` các kích cỡ 192x192 và 512x512.
+  - Manifest: Khai báo `display: standalone`, `theme_color: #0F172A`, `background_color: #0F172A`.
+  - Tự động ẩn toàn bộ thanh điều hướng của Safari, mở toàn màn hình (Standalone) như App tải từ App Store.
+- **Triển khai Web lên GitHub Pages:**
+  - Thư mục phát hành web tĩnh: `docs/` chứa toàn bộ bản build web Flutter (`index.html`, `404.html`, `manifest.json`, `main.dart.js`, `assets/`, `canvaskit/`).
+  - Hỗ trợ định tuyến Single Page App: Tệp `docs/404.html` đồng bộ với `index.html` ngăn chặn lỗi 404 khi người dùng refresh hoặc truy cập trực tiếp URL.
+  - GitHub Actions Workflow: `.github/workflows/deploy_pages.yml` tự động build và deploy lên GitHub Pages mỗi khi có commit mới trên nhánh `main`.
+  - Địa chỉ Web PWA dành cho người dùng iOS: `https://kietphan2812.github.io/TIKTUBEPTK_DIENTHOAI/`.
+
+---
+
 ## 4. GHI NHỚ MÔI TRƯỜNG MÁY CHỦ & CLIENT
 - **Hệ điều hành máy người dùng:** Windows.
 - **Lệnh PowerShell:** Dùng dấu `;` để nối chuỗi lệnh thay vì `&&`.
