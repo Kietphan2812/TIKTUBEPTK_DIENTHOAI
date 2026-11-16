@@ -66,6 +66,7 @@ class CallManager {
         final callerPhone = caller['phone']?.toString() ?? '';
         final callerAvatar = caller['avatar']?.toString() ?? '';
         final isVideo = (data['isVideo'] == true) || (data['type'] == 'video');
+        final offer = data['offer'] is Map ? Map<String, dynamic>.from(data['offer'] as Map) : null;
 
         // Bật chuông điện thoại & chuyển app ra màn hình trước
         unawaited(bringAppToFront());
@@ -77,6 +78,7 @@ class CallManager {
           callerPhone: callerPhone,
           callerAvatar: callerAvatar,
           isVideo: isVideo,
+          offer: offer,
         );
       } else if (type == 'ended' || type == 'rejected' || type == 'answered') {
         unawaited(stopRingtone());
@@ -92,6 +94,7 @@ class CallManager {
     required String callerPhone,
     required String callerAvatar,
     required bool isVideo,
+    Map<String, dynamic>? offer,
   }) {
     if (CallOverlay.isCallOpen) return;
 
@@ -108,6 +111,7 @@ class CallManager {
             callerPhone: callerPhone,
             callerAvatar: callerAvatar,
             isVideo: isVideo,
+            offer: offer,
           );
         }
       });
@@ -121,6 +125,7 @@ class CallManager {
       callerPhone: callerPhone,
       callerAvatar: callerAvatar,
       isVideo: isVideo,
+      offer: offer,
     );
   }
 
@@ -131,6 +136,7 @@ class CallManager {
     required String callerPhone,
     required String callerAvatar,
     required bool isVideo,
+    Map<String, dynamic>? offer,
   }) {
     if (CallOverlay.isCallOpen) return;
 
@@ -150,6 +156,7 @@ class CallManager {
       friend: friend,
       isVideo: isVideo,
       isIncoming: true,
+      offer: offer,
     );
   }
 

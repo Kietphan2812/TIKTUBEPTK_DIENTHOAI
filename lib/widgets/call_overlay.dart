@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../data/chat_service.dart';
 import '../models/chat_contact.dart';
 import '../services/call_manager.dart';
+import '../services/webrtc_service.dart';
 
 class CallOverlay extends StatefulWidget {
   const CallOverlay({
@@ -12,12 +13,14 @@ class CallOverlay extends StatefulWidget {
     required this.friend,
     required this.isVideo,
     this.isIncoming = false,
+    this.offer,
     this.onClose,
   });
 
   final Friend friend;
   final bool isVideo;
   final bool isIncoming;
+  final Map<String, dynamic>? offer;
   final VoidCallback? onClose;
 
   static bool _isOpen = false;
@@ -28,6 +31,7 @@ class CallOverlay extends StatefulWidget {
     required Friend friend,
     required bool isVideo,
     bool isIncoming = false,
+    Map<String, dynamic>? offer,
   }) {
     if (_isOpen) return;
     _isOpen = true;
@@ -42,6 +46,7 @@ class CallOverlay extends StatefulWidget {
           friend: friend,
           isVideo: isVideo,
           isIncoming: isIncoming,
+          offer: offer,
           onClose: () {
             _isOpen = false;
             if (Navigator.of(ctx).canPop()) {
@@ -96,20 +101,7 @@ class _CallOverlayState extends State<CallOverlay>
     }
 
     if (!widget.isIncoming) {
-      ChatService.instance.initiateCall(widget.friend.id, isVideo: widget.isVideo);
-      // Tự động kết thúc nếu đối phương không nhấc máy sau 45 giây
-      _callTimer = Timer(const Duration(seconds: 45), () {
-        if (!mounted || _connected) return;
-        if (mounted) {
-          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-            const SnackBar(
-              content: Text('Người nhận hiện không trả lời'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-        _hangup();
-      });
+      unawaited(_setupWebRtcCaller());
     }
 
     _callEventsSub = ChatService.instance.callEvents.listen((event) {
@@ -122,7 +114,20 @@ class _CallOverlayState extends State<CallOverlay>
           if (widget.isVideo && !_isCameraInitialized) {
             unawaited(_initCamera());
           }
+          final answer = event['data']?['answer'] is Map
+              ? Map<String, dynamic>.from(event['data']['answer'] as Map)
+              : null;
+          if (answer != null) {
+            unawaited(WebRtcService.instance.setRemoteAnswer(answer));
+          }
           _startTimer();
+        }
+      } else if (type == 'ice-candidate') {
+        final candidate = event['data']?['candidate'] is Map
+            ? Map<String, dynamic>.from(event['data']['candidate'] as Map)
+            : null;
+        if (candidate != null) {
+          unawaited(WebRtcService.instance.addCandidate(candidate));
         }
       } else if (type == 'rejected') {
         _callTimer?.cancel();
@@ -201,6 +206,35 @@ class _CallOverlayState extends State<CallOverlay>
     }
   }
 
+  Future<void> _setupWebRtcCaller() async {
+    WebRtcService.instance.onIceCandidateGenerated = (candidate) {
+      ChatService.instance.sendIceCandidate(widget.friend.id, candidate);
+    };
+
+    final offer = await WebRtcService.instance.createOffer();
+    if (!mounted) return;
+
+    ChatService.instance.initiateCall(
+      widget.friend.id,
+      isVideo: widget.isVideo,
+      offer: offer,
+    );
+
+    // Tự động kết thúc nếu đối phương không nhấc máy sau 45 giây
+    _callTimer = Timer(const Duration(seconds: 45), () {
+      if (!mounted || _connected) return;
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(
+            content: Text('Người nhận hiện không trả lời'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      _hangup();
+    });
+  }
+
   void _startTimer() {
     _callTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
@@ -208,9 +242,22 @@ class _CallOverlayState extends State<CallOverlay>
     });
   }
 
-  void _answerCall() {
+  void _answerCall() async {
     unawaited(CallManager.instance.stopRingtone());
-    ChatService.instance.answerCall(widget.friend.id);
+
+    WebRtcService.instance.onIceCandidateGenerated = (candidate) {
+      ChatService.instance.sendIceCandidate(widget.friend.id, candidate);
+    };
+
+    Map<String, dynamic>? answer;
+    if (widget.offer != null) {
+      answer = await WebRtcService.instance.createAnswer(widget.offer!);
+    } else {
+      answer = await WebRtcService.instance.createOffer();
+    }
+
+    if (!mounted) return;
+    ChatService.instance.answerCall(widget.friend.id, answer: answer);
     setState(() => _connected = true);
     if (widget.isVideo && !_isCameraInitialized) {
       unawaited(_initCamera());
@@ -222,6 +269,7 @@ class _CallOverlayState extends State<CallOverlay>
     unawaited(CallManager.instance.stopRingtone());
     _callTimer?.cancel();
     _callEventsSub?.cancel();
+    unawaited(WebRtcService.instance.disposeCall());
     ChatService.instance.endCall(
       widget.friend.id,
       isVideo: widget.isVideo,
@@ -237,6 +285,7 @@ class _CallOverlayState extends State<CallOverlay>
     _callTimer?.cancel();
     _callEventsSub?.cancel();
     _cameraController?.dispose();
+    unawaited(WebRtcService.instance.disposeCall());
     super.dispose();
   }
 
@@ -579,7 +628,12 @@ class _CallOverlayState extends State<CallOverlay>
             icon: _isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
             label: _isMuted ? 'Bật mic' : 'Tắt mic',
             active: _isMuted,
-            onTap: () => setState(() => _isMuted = !_isMuted),
+            onTap: () {
+              setState(() {
+                _isMuted = !_isMuted;
+                WebRtcService.instance.setMicrophoneMute(_isMuted);
+              });
+            },
           ),
 
           // Nút Camera (nếu là video call)
@@ -609,7 +663,12 @@ class _CallOverlayState extends State<CallOverlay>
                 : Icons.volume_off_rounded,
             label: _isSpeakerOn ? 'Loa ngoài' : 'Loa trong',
             active: _isSpeakerOn,
-            onTap: () => setState(() => _isSpeakerOn = !_isSpeakerOn),
+            onTap: () {
+              setState(() {
+                _isSpeakerOn = !_isSpeakerOn;
+                WebRtcService.instance.setSpeakerphoneOn(_isSpeakerOn);
+              });
+            },
           ),
 
           // Nút Gác máy

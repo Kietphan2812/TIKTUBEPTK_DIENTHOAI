@@ -277,6 +277,20 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
 
 ---
 
+### 3.19. Tích hợp Truyền âm thanh trực tiếp qua WebRTC P2P (Live Voice Call via Google STUN)
+- **Thư viện chuẩn:** `flutter_webrtc: ^1.6.3`.
+- **Dịch vụ WebRtcService (`lib/services/webrtc_service.dart`):**
+  - Cụm STUN Server Google: `stun:stun.l.google.com:19302`, `stun:stun1.l.google.com:19302`, `stun:stun2.l.google.com:19302`, `stun:stun3.l.google.com:19302`, `stun:stun4.l.google.com:19302`.
+  - Phía người gọi (Caller): Mở microphone bằng `navigator.mediaDevices.getUserMedia({'audio': true, 'video': false})`, khởi tạo `createPeerConnection`, thêm local audio track, tạo SDP Offer và gom ứng viên STUN (Vanilla ICE) gửi kèm qua `call:initiate`.
+  - Phía người nhận (Receiver): Mở microphone, tạo `createPeerConnection`, thêm local audio track, nạp remote offer, tạo SDP Answer và gom ứng viên STUN gửi về qua `call:answer`.
+  - Hai chiều thông tuyến: Khi người gọi nhận được answer, nạp vào `setRemoteDescription`, kết nối P2P được thiết lập thành công. Âm thanh giọng nói từ micro máy A truyền trực tiếp qua loa máy B và ngược lại theo thời gian thực với độ trễ thấp (low-latency Opus audio).
+  - Hỗ trợ Trickle ICE dự phòng: Tự động phát hiện và chuyển tiếp ứng viên `call:ice-candidate` qua Socket.io.
+  - Điều khiển phần cứng: Nút Mic gọi `WebRtcService.instance.setMicrophoneMute(muted)`, nút Loa gọi `WebRtcService.instance.setSpeakerphoneOn(enabled)` qua `Helper.setSpeakerphoneOn`.
+  - Giải phóng tài nguyên: Khi gác máy hoặc đóng overlay, tự động dừng audio tracks, đóng peer connection và giải phóng toàn bộ luồng media.
+  - Cấp quyền Android trong `AndroidManifest.xml`: `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS`, `ACCESS_NETWORK_STATE`, `BLUETOOTH`, `BLUETOOTH_CONNECT`.
+
+---
+
 ## 4. GHI NHỚ MÔI TRƯỜNG MÁY CHỦ & CLIENT
 - **Hệ điều hành máy người dùng:** Windows.
 - **Lệnh PowerShell:** Dùng dấu `;` để nối chuỗi lệnh thay vì `&&`.

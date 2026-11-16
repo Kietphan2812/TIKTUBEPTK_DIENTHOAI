@@ -694,6 +694,15 @@ class ChatService extends ChangeNotifier {
         unawaited(PushNotificationService.instance.cancelCallNotification());
       });
 
+      _socket!.on('call:ice-candidate', (data) {
+        if (data is Map) {
+          _callEventsController.add({
+            'type': 'ice-candidate',
+            'data': Map<String, dynamic>.from(data),
+          });
+        }
+      });
+
       _socket!.connect();
     } catch (e) {
       debugPrint('Lỗi khởi tạo socket: $e');
@@ -1054,23 +1063,33 @@ class ChatService extends ChangeNotifier {
 
   }
 
-  /// Bắt đầu cuộc gọi thoại hoặc video qua tín hiệu Socket.io
-  void initiateCall(String friendId, {required bool isVideo}) {
+  /// Bắt đầu cuộc gọi thoại hoặc video qua tín hiệu Socket.io (kèm WebRTC SDP Offer)
+  void initiateCall(String friendId, {required bool isVideo, Map<String, dynamic>? offer}) {
     if (_socket != null && _socket!.connected) {
       _socket!.emit('call:initiate', {
         'targetUserId': friendId,
         'isVideo': isVideo,
-        'offer': null,
+        'offer': offer,
       });
     }
   }
 
-  /// Trả lời cuộc gọi đến
-  void answerCall(String callerId) {
+  /// Trả lời cuộc gọi đến (kèm WebRTC SDP Answer)
+  void answerCall(String callerId, {Map<String, dynamic>? answer}) {
     if (_socket != null && _socket!.connected) {
       _socket!.emit('call:answer', {
         'targetUserId': callerId,
-        'answer': null,
+        'answer': answer,
+      });
+    }
+  }
+
+  /// Gửi ứng viên mạng WebRTC ICE Candidate qua Socket.io
+  void sendIceCandidate(String targetUserId, Map<String, dynamic> candidate) {
+    if (_socket != null && _socket!.connected) {
+      _socket!.emit('call:ice-candidate', {
+        'targetUserId': targetUserId,
+        'candidate': candidate,
       });
     }
   }
