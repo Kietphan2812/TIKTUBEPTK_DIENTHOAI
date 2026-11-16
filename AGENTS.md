@@ -265,6 +265,18 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
 
 ---
 
+### 3.18. Cơ chế Bắt máy Cuộc gọi thật & Bản chất Âm thanh đàm thoại (Socket.io Signaling vs WebRTC)
+- **Sửa lỗi tự động kết nối sau 3 giây (Fix Auto-connected Call Bug):**
+  - Trước đây: `CallOverlay` trong `initState` có bộ hẹn giờ cứng `Timer(const Duration(milliseconds: 3000))` tự động kích hoạt `_connected = true` và nhảy đồng hồ `00:01, 00:02...` dù bên người nhận chưa hề bấm nút nghe máy.
+  - Khắc phục: Đã xóa bỏ hoàn toàn bộ hẹn giờ 3 giây giả lập. Bên gọi (`isIncoming == false`) hiện giữ trạng thái `"Đang đổ chuông..."` và chỉ chuyển sang `"Connected / Đang đàm thoại"` KHI VÀ CHỈ KHI nhận được sự kiện Socket.io `call:answered` từ phía người nhận.
+  - Bổ sung cơ chế Timeout: Nếu sau 45 giây người nhận không bấm máy, hệ thống tự động ngắt cuộc gọi với thông báo "Người nhận không trả lời".
+  - Bổ sung sự kiện Từ chối: Khi người nhận bấm nút đỏ Từ chối, bên gọi lập tức hiển thị thông báo "Cuộc gọi bị từ chối" và tự động đóng màn hình gọi.
+- **Bản chất Mic, Loa & Truyền giọng nói trực tiếp (Signaling Server vs Media Server):**
+  - Hệ thống hiện tại sử dụng **Socket.io Signaling Server** (`nhantinptk.onrender.com`): Quản lý tín hiệu phát cuộc gọi (`initiate`), rung chuông native (`RingtoneManager`), thông báo đẩy cuộc gọi đến (`incoming`), chấp nhận (`answered`), kết thúc (`ended`), từ chối (`rejected`), và mở phần cứng camera trước (`camera: ^0.12.2`) kèm đếm thời lượng.
+  - Để truyền giọng nói thật qua lại giữa 2 micro và 2 loa ngoài thiết bị theo thời gian thực (P2P real-time audio), hệ sinh thái cần bổ sung giao thức **WebRTC (Web Real-Time Communication)** với máy chủ STUN/TURN server để bypass NAT/Firewall và mã hóa luồng media track.
+
+---
+
 ## 4. GHI NHỚ MÔI TRƯỜNG MÁY CHỦ & CLIENT
 - **Hệ điều hành máy người dùng:** Windows.
 - **Lệnh PowerShell:** Dùng dấu `;` để nối chuỗi lệnh thay vì `&&`.
