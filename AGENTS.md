@@ -309,7 +309,7 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
 - **Thư viện chuẩn:** `google_sign_in: ^7.2.0`.
 - **Cấu hình Google Cloud Console (Dự án `elegant-matrix-514123-i9`):**
   - Trạng thái công bố: **In production** (Sẵn sàng phục vụ mọi người dùng có tài khoản Google mà không bị giới hạn Test Users).
-  - Web Client ID: `767308821556-u8m4lou3li7a97avu47c9mkd5569lj4v.apps.googleusercontent.com`.
+  - Web Client ID: `767308821556-4ofr0c7a66p78md3nrq1svn03i1u7q0a.apps.googleusercontent.com`.
   - Tích hợp GIS SDK: `<script src="https://accounts.google.com/gsi/client" async defer></script>` và thẻ `<meta name="google-signin-client_id" ...>` trong `web/index.html`.
 - **Dịch vụ `GoogleAuthService` (`lib/utils/google_auth_service.dart`):**
   - Khởi tạo `GoogleSignIn.instance.initialize(clientId: kIsWeb ? googleClientId : null)`.

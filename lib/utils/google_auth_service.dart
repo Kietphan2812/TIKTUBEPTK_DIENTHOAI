@@ -21,7 +21,7 @@ class GoogleAuthService {
   static final GoogleAuthService instance = GoogleAuthService._();
 
   static const String googleClientId =
-      '767308821556-u8m4lou3li7a97avu47c9mkd5569lj4v.apps.googleusercontent.com';
+      '767308821556-4ofr0c7a66p78md3nrq1svn03i1u7q0a.apps.googleusercontent.com';
 
   bool _initialized = false;
   final StreamController<GoogleAuthResult> _authResultController =
