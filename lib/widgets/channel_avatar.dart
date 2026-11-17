@@ -2,15 +2,25 @@ import 'package:flutter/material.dart';
 
 import '../auth/auth_scope.dart';
 import '../models/video.dart';
+import '../screens/channel_screen.dart';
 import '../theme/app_theme.dart';
 
 /// Avatar kênh: hiển thị ảnh thật từ tác giả / Neon / Cloudinary nếu có;
 /// nếu không thì quay về gradient + chữ cái đầu.
+/// Tự động hỗ trợ bấm vào để mở trang kênh cá nhân của tác giả.
 class ChannelAvatar extends StatelessWidget {
-  const ChannelAvatar({super.key, required this.video, this.size = 32});
+  const ChannelAvatar({
+    super.key,
+    required this.video,
+    this.size = 32,
+    this.enableNavigation = true,
+    this.onTap,
+  });
 
   final Video video;
   final double size;
+  final bool enableNavigation;
+  final VoidCallback? onTap;
 
   Widget _buildFallback(BuildContext context) {
     return Container(
@@ -41,6 +51,26 @@ class ChannelAvatar extends StatelessWidget {
     );
   }
 
+  void _handleTap(BuildContext context, String? effectiveAvatar) {
+    if (onTap != null) {
+      onTap!();
+      return;
+    }
+    if (!enableNavigation) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ChannelScreen(
+          channelName: video.channel,
+          channelId: video.channelId,
+          avatarUrl: effectiveAvatar ?? video.authorAvatarUrl,
+          subscriberCount: video.subscriberCount,
+          subscribed: video.subscribed,
+          initialVideo: video,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final profile = AuthScope.maybeOf(context)?.profile;
@@ -56,9 +86,10 @@ class ChannelAvatar extends StatelessWidget {
       }
     }
 
+    Widget content;
     if (effectiveAvatar != null && effectiveAvatar.trim().isNotEmpty) {
       final trimmed = effectiveAvatar.trim();
-      return Container(
+      content = Container(
         width: size,
         height: size,
         decoration: BoxDecoration(
@@ -78,8 +109,21 @@ class ChannelAvatar extends StatelessWidget {
           ),
         ),
       );
+    } else {
+      content = _buildFallback(context);
     }
 
-    return _buildFallback(context);
+    if (enableNavigation || onTap != null) {
+      return MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _handleTap(context, effectiveAvatar),
+          child: content,
+        ),
+      );
+    }
+
+    return content;
   }
 }

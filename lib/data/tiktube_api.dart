@@ -117,6 +117,12 @@ abstract interface class TikTubeApi {
 
   Future<AuthSession> login({required String login, required String password});
 
+  Future<AuthSession> loginWithGoogle({
+    required String email,
+    String? name,
+    String? avatarUrl,
+  });
+
   Future<AuthSession> register({
     required String name,
     required String username,

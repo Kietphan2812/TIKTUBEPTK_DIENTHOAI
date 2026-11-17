@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'account_screen.dart';
 import 'auth_screen.dart';
+import 'channel_screen.dart';
 import 'chat_screen.dart';
 
 import '../auth/auth_scope.dart';
@@ -817,32 +818,52 @@ class _MainColumn extends StatelessWidget {
             ChannelAvatar(video: video, size: compact ? 38 : 42),
             const SizedBox(width: 10),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    video.channel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: compact ? 13.5 : 14,
-                      fontWeight: FontWeight.w700,
-                      color: p.textPrimary,
-                    ),
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => ChannelScreen(
+                          channelName: video.channel,
+                          channelId: video.channelId,
+                          avatarUrl: video.authorAvatarUrl,
+                          subscriberCount: subscriberCount,
+                          subscribed: subscribed,
+                          initialVideo: video,
+                        ),
+                      ),
+                    );
+                  },
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        video.channel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: compact ? 13.5 : 14,
+                          fontWeight: FontWeight.w700,
+                          color: p.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        video
+                            .copyWith(subscriberCount: subscriberCount)
+                            .subscriberLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: compact ? 10.5 : 11,
+                          color: p.textSecondary,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    video
-                        .copyWith(subscriberCount: subscriberCount)
-                        .subscriberLabel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: compact ? 10.5 : 11,
-                      color: p.textSecondary,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
             const SizedBox(width: 10),
@@ -1526,14 +1547,31 @@ class _CommentTile extends StatelessWidget {
                   children: <Widget>[
                     Row(
                       children: <Widget>[
-                        Text(
-                          comment.author.startsWith('@')
-                              ? comment.author
-                              : '@${comment.author}',
-                          style: TextStyle(
-                            fontSize: isReply ? 11 : 12,
-                            fontWeight: FontWeight.w700,
-                            color: p.textPrimary,
+                        MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTap: () {
+                              final name = comment.author.startsWith('@')
+                                  ? comment.author.substring(1)
+                                  : comment.author;
+                              Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => ChannelScreen(
+                                    channelName: name,
+                                  ),
+                                ),
+                              );
+                            },
+                            child: Text(
+                              comment.author.startsWith('@')
+                                  ? comment.author
+                                  : '@${comment.author}',
+                              style: TextStyle(
+                                fontSize: isReply ? 11 : 12,
+                                fontWeight: FontWeight.w700,
+                                color: p.textPrimary,
+                              ),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 6),
@@ -1712,7 +1750,10 @@ class _CommentTile extends StatelessWidget {
 }
 
 class _CommentAvatar extends StatelessWidget {
-  const _CommentAvatar({required this.author, required this.size});
+  const _CommentAvatar({
+    required this.author,
+    required this.size,
+  });
 
   final String author;
   final double size;
@@ -1765,8 +1806,9 @@ class _CommentAvatar extends StatelessWidget {
       }
     }
 
+    Widget avatar;
     if (effectiveAvatar != null && effectiveAvatar.trim().isNotEmpty) {
-      return Container(
+      avatar = Container(
         width: size,
         height: size,
         decoration: BoxDecoration(
@@ -1786,9 +1828,28 @@ class _CommentAvatar extends StatelessWidget {
           ),
         ),
       );
+    } else {
+      avatar = _buildFallback();
     }
 
-    return _buildFallback();
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          final name = author.startsWith('@') ? author.substring(1) : author;
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => ChannelScreen(
+                channelName: name,
+                avatarUrl: effectiveAvatar,
+              ),
+            ),
+          );
+        },
+        child: avatar,
+      ),
+    );
   }
 }
 

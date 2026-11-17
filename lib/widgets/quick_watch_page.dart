@@ -5,6 +5,7 @@ import 'package:video_player/video_player.dart';
 
 import '../auth/auth_scope.dart';
 import '../models/video.dart';
+import '../screens/channel_screen.dart';
 import 'channel_avatar.dart';
 import 'video_surface.dart';
 
@@ -641,15 +642,37 @@ class _Caption extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             Flexible(
-              child: Text(
-                _handle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w800,
-                  shadows: <Shadow>[Shadow(blurRadius: 6, color: Colors.black87)],
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => ChannelScreen(
+                          channelName: video.channel,
+                          channelId: video.channelId,
+                          avatarUrl: video.authorAvatarUrl,
+                          subscriberCount: video.subscriberCount,
+                          subscribed: video.subscribed,
+                          initialVideo: video,
+                        ),
+                      ),
+                    );
+                  },
+                  child: Text(
+                    _handle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w800,
+                      shadows: <Shadow>[
+                        Shadow(blurRadius: 6, color: Colors.black87),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),

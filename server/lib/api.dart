@@ -70,6 +70,7 @@ Handler createApi(
       'endpoints': <String>[
         'POST /api/auth/register',
         'POST /api/auth/login',
+        'POST /api/auth/google',
         'POST /api/auth/logout',
         'GET /health',
         'GET /api/categories',
@@ -189,6 +190,65 @@ Handler createApi(
     }
 
     final token = await _issueSession(db, profile['userKey'] as String);
+    return _json(<String, Object?>{'token': token, 'profile': profile});
+  });
+
+  router.post('/api/auth/google', (Request request) async {
+    final body = await _readJson(request);
+    final email = (body['email'] as String?)?.trim().toLowerCase() ?? '';
+    final name = (body['name'] as String?)?.trim() ?? '';
+    final avatarUrl = (body['avatarUrl'] as String?)?.trim();
+
+    if (email.isEmpty || !_emailPattern.hasMatch(email)) {
+      throw ApiError(400, 'Email Google không hợp lệ.');
+    }
+
+    // 1. Tìm tài khoản người dùng theo email Google
+    var profile = await db.findUserByEmail(email);
+
+    // 2. Nếu chưa có, tự động tạo tài khoản TIKTUBE mới liên kết với Google
+    if (profile == null) {
+      var baseKey =
+          email.split('@').first.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_');
+      if (baseKey.length < 3) baseKey = '${baseKey}_user';
+      if (baseKey.length > 25) baseKey = baseKey.substring(0, 25);
+      var candidate = baseKey;
+      var suffix = 1;
+      while (await db.userKeyExists(candidate)) {
+        candidate = '${baseKey}_$suffix';
+        suffix++;
+      }
+
+      final randomSecret = _hashToken(
+        'google_oauth_${email}_${DateTime.now().millisecondsSinceEpoch}',
+      ).substring(0, 16);
+      final displayName = name.isNotEmpty ? name : candidate;
+
+      profile = await db.createUser(
+        userKey: candidate,
+        name: displayName,
+        email: email,
+        password: randomSecret,
+      );
+
+      if (profile == null) {
+        throw ApiError(500, 'Không thể tạo tài khoản qua Google.');
+      }
+
+      if (avatarUrl != null && avatarUrl.isNotEmpty) {
+        try {
+          final updated = await db.updateProfile(
+            userKey: candidate,
+            name: displayName,
+            email: email,
+            avatarUrl: avatarUrl,
+          );
+          if (updated != null) profile = updated;
+        } catch (_) {}
+      }
+    }
+
+    final token = await _issueSession(db, profile!['userKey'] as String);
     return _json(<String, Object?>{'token': token, 'profile': profile});
   });
 

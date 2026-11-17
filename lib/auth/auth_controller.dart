@@ -115,6 +115,34 @@ class AuthController extends ChangeNotifier {
     await _apply(updatedSession);
   }
 
+  Future<void> loginWithGoogle({
+    required String email,
+    String? name,
+    String? avatarUrl,
+  }) async {
+    final session = await _api.loginWithGoogle(
+      email: email,
+      name: name,
+      avatarUrl: avatarUrl,
+    );
+    final key = session.profile.userKey.trim().toLowerCase();
+    String? phone = session.profile.phone;
+    if (phone == null || phone.isEmpty) {
+      phone = await UserPreferences.getUserPhone(key);
+    } else {
+      unawaited(UserPreferences.saveUserPhone(key, phone));
+    }
+
+    final updatedSession = (phone != null && phone.isNotEmpty)
+        ? AuthSession(
+            token: session.token,
+            profile: session.profile.copyWith(phone: phone),
+          )
+        : session;
+
+    await _apply(updatedSession);
+  }
+
   Future<void> register({
     required String name,
     required String username,

@@ -13,6 +13,7 @@ import '../widgets/mobile_segmented_tabs.dart';
 import '../widgets/section_top_bar.dart';
 import '../widgets/video_card.dart';
 import 'account_screen.dart';
+import 'channel_screen.dart';
 import 'watch_screen.dart';
 
 class SubscriptionsScreen extends StatefulWidget {
@@ -390,6 +391,19 @@ class _MobileChannelTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
 
+    void openChannel() {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ChannelScreen(
+            channelName: channel.name,
+            channelId: channel.id,
+            subscriberCount: channel.subscriberCount,
+            subscribed: true,
+          ),
+        ),
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -399,50 +413,64 @@ class _MobileChannelTile extends StatelessWidget {
       ),
       child: Row(
         children: <Widget>[
-          Container(
-            width: 48,
-            height: 48,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: channel.colors,
-              ),
-            ),
-            child: Text(
-              channel.initial,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
+          MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: openChannel,
+              child: Container(
+                width: 48,
+                height: 48,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: channel.colors,
+                  ),
+                ),
+                child: Text(
+                  channel.initial,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
             ),
           ),
           const SizedBox(width: 11),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  channel.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
-                    color: p.textPrimary,
-                  ),
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: openChannel,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      channel.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: p.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${channel.videoCount} video · ${channel.subscriberLabel}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 10.5, color: p.textSecondary),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  '${channel.videoCount} video · ${channel.subscriberLabel}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 10.5, color: p.textSecondary),
-                ),
-              ],
+              ),
             ),
           ),
           const SizedBox(width: 8),
@@ -481,6 +509,19 @@ class _ChannelCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
 
+    void openChannel() {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ChannelScreen(
+            channelName: channel.name,
+            channelId: channel.id,
+            subscriberCount: channel.subscriberCount,
+            subscribed: true,
+          ),
+        ),
+      );
+    }
+
     return Container(
       width: 168,
       padding: const EdgeInsets.fromLTRB(14, 18, 14, 14),
@@ -494,43 +535,57 @@ class _ChannelCard extends StatelessWidget {
       ),
       child: Column(
         children: <Widget>[
-          Container(
-            width: 62,
-            height: 62,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: channel.colors,
-              ),
-              boxShadow: <BoxShadow>[
-                BoxShadow(
-                  color: p.shadow,
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
+          MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: openChannel,
+              child: Container(
+                width: 62,
+                height: 62,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: channel.colors,
+                  ),
+                  boxShadow: <BoxShadow>[
+                    BoxShadow(
+                      color: p.shadow,
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            child: Text(
-              channel.initial,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 26,
-                fontWeight: FontWeight.w800,
+                child: Text(
+                  channel.initial,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
             ),
           ),
           const SizedBox(height: 10),
-          Text(
-            channel.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: p.textPrimary,
+          MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: openChannel,
+              child: Text(
+                channel.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: p.textPrimary,
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 2),

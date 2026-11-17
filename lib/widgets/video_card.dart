@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/video.dart';
+import '../screens/channel_screen.dart';
 import '../theme/app_theme.dart';
 import '../utils/video_downloader.dart';
 import 'channel_avatar.dart';
@@ -296,14 +297,34 @@ class _ChannelLine extends StatelessWidget {
     return Row(
       children: <Widget>[
         Flexible(
-          child: Text(
-            '${video.channel}  •  ${video.viewsLabel}  •  ${video.date}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: compact ? 12 : 11,
-              color: palette.textSecondary,
-              height: 1.2,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => ChannelScreen(
+                      channelName: video.channel,
+                      channelId: video.channelId,
+                      avatarUrl: video.authorAvatarUrl,
+                      subscriberCount: video.subscriberCount,
+                      subscribed: video.subscribed,
+                      initialVideo: video,
+                    ),
+                  ),
+                );
+              },
+              child: Text(
+                '${video.channel}  •  ${video.viewsLabel}  •  ${video.date}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: compact ? 12 : 11,
+                  color: palette.textSecondary,
+                  height: 1.2,
+                ),
+              ),
             ),
           ),
         ),

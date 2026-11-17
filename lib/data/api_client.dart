@@ -434,6 +434,24 @@ class ApiClient implements TikTubeApi {
   }
 
   @override
+  Future<AuthSession> loginWithGoogle({
+    required String email,
+    String? name,
+    String? avatarUrl,
+  }) async {
+    final data = await _request(
+      'POST',
+      _uri('/api/auth/google'),
+      body: <String, Object?>{
+        'email': email,
+        if (name != null && name.isNotEmpty) 'name': name,
+        if (avatarUrl != null && avatarUrl.isNotEmpty) 'avatarUrl': avatarUrl,
+      },
+    );
+    return AuthSession.fromJson(data);
+  }
+
+  @override
   Future<AuthSession> register({
     required String name,
     required String username,

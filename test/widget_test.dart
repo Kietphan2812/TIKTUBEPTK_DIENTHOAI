@@ -197,6 +197,21 @@ class _OfflineApi implements TikTubeApi {
   );
 
   @override
+  Future<AuthSession> loginWithGoogle({
+    required String email,
+    String? name,
+    String? avatarUrl,
+  }) async => AuthSession(
+    token: 'test-token',
+    profile: Profile(
+      userKey: email.split('@').first,
+      name: name ?? email.split('@').first,
+      email: email,
+      avatarUrl: avatarUrl,
+    ),
+  );
+
+  @override
   Future<AuthSession> register({
     required String name,
     required String username,
