@@ -14,6 +14,7 @@ Widget buildGsiButton({required bool isRegister}) {
           ? gsi_web.GSIButtonText.signupWith
           : gsi_web.GSIButtonText.signinWith,
       logoAlignment: gsi_web.GSIButtonLogoAlignment.left,
+      minimumWidth: 320,
       locale: 'vi',
     ),
   );

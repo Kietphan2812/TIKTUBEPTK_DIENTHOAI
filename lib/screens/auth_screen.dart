@@ -51,7 +51,9 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   void initState() {
     super.initState();
-    GoogleAuthService.instance.ensureInitialized();
+    GoogleAuthService.instance.ensureInitialized().then((_) {
+      if (mounted) setState(() {});
+    });
     _googleAuthSub =
         GoogleAuthService.instance.onUserSignedIn.listen(_onGoogleUserSignedIn);
   }
