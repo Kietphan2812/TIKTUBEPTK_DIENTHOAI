@@ -322,6 +322,23 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
 
 ---
 
+### 3.22. Trích xuất Thumbnail tự động, Toàn trang Sửa video kèm Ảnh bìa & Danh sách Người theo dõi thật
+- **Trích xuất ảnh Thumbnail tự động & Khắc phục thời lượng `--:--`:**
+  - Bổ sung getter `effectiveThumbnailUrl` trong [Video](file:///d:/flutter_app_ptk/lib/models/video.dart): ưu tiên `thumbnailUrl` đã lưu, nếu rỗng và video lưu trên Cloudinary sẽ tự động rewrite URL thành ảnh tĩnh tại giây thứ 2 (`/upload/so_2,w_640,h_360,c_fill/...jpg`).
+  - Cập nhật [VideoThumb](file:///d:/flutter_app_ptk/lib/widgets/video_thumb.dart) và [QuickWatchPage](file:///d:/flutter_app_ptk/lib/widgets/quick_watch_page.dart) sử dụng `effectiveThumbnailUrl`.
+  - Với các video có thời lượng <= 0, ẩn hoàn toàn badge thời lượng thay vì hiển thị `--:--` gây mất thẩm mỹ.
+- **Trang Sửa video toàn diện (`UploadScreen(editVideo: video)`):**
+  - Loại bỏ hoàn toàn hộp thoại sửa video popup nhỏ hẹp cũ (`_EditVideoDialog`) trong [HistoryScreen](file:///d:/flutter_app_ptk/lib/screens/history_screen.dart).
+  - Khi bấm "Sửa video", ứng dụng chuyển thẳng sang toàn bộ màn hình [UploadScreen](file:///d:/flutter_app_ptk/lib/screens/upload_screen.dart) ở chế độ biên tập: nạp sẵn tiêu đề, mô tả, danh mục, thẻ hashtag, chế độ trẻ em và ảnh thumbnail hiện tại.
+  - Tích hợp tính năng **Chọn ảnh bìa từ thiết bị**: người dùng có thể bấm "Chọn ảnh bìa" để tải ảnh thumbnail mới từ máy lên Cloudinary (`ChatService.instance.uploadImage`) hoặc xoá ảnh bìa tuỳ thích.
+  - Hỗ trợ xem trước video đã đăng ngay trong khung phát preview 16:9.
+- **Kích hoạt Tab Người theo dõi / Người đăng ký (Subscribers):**
+  - Backend API: Thêm endpoint `GET /api/subscribers` và hàm `listSubscribers()` trong `server/lib/db.dart` & `server/lib/api.dart` truy vấn trực tiếp bảng `dang_ky_kenh` kết hợp với `nguoi_dung` trong Neon PostgreSQL.
+  - Client API: Bổ sung `fetchSubscribers()` trong `TikTubeApi` và `ApiClient`.
+  - Màn hình Đăng ký ([SubscriptionsScreen](file:///d:/flutter_app_ptk/lib/screens/subscriptions_screen.dart)): Tab 2 ("Người theo dõi") hiển thị danh sách người dùng đang theo dõi kênh của bạn với avatar, tên, username, số video, và nút Đăng ký lại / Huỷ đăng ký hai chiều mượt mà.
+
+---
+
 ## 4. GHI NHỚ MÔI TRƯỜNG MÁY CHỦ & CLIENT
 - **Hệ điều hành máy người dùng:** Windows.
 - **Lệnh PowerShell:** Dùng dấu `;` để nối chuỗi lệnh thay vì `&&`.
