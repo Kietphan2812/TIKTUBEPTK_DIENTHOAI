@@ -109,6 +109,8 @@ class _OfflineApi implements TikTubeApi {
     required String description,
     required String category,
     required List<String> tags,
+    String? thumbnailUrl,
+    bool? isKidsOnly,
   }) async => throw Exception('offline');
 
   @override
@@ -119,6 +121,9 @@ class _OfflineApi implements TikTubeApi {
 
   @override
   Future<List<Channel>> fetchSubscriptions() async => kSubscribedChannels;
+
+  @override
+  Future<List<Channel>> fetchSubscribers() async => const <Channel>[];
 
   @override
   Future<List<Video>> fetchSubscriptionFeed({int limit = 30}) async =>

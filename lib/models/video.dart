@@ -244,6 +244,23 @@ class Video {
 
   bool get isPlayable => (videoUrl ?? '').trim().isNotEmpty;
 
+  /// Ảnh thumbnail hiệu lực: ưu tiên ảnh bìa đã lưu, nếu chưa có thì tự động
+  /// trích xuất khung hình 2 giây từ video Cloudinary, khắc phục tình trạng video không có nền.
+  String? get effectiveThumbnailUrl {
+    final thumb = (thumbnailUrl ?? '').trim();
+    if (thumb.isNotEmpty) return thumb;
+    final vUrl = (videoUrl ?? '').trim();
+    if (vUrl.contains('res.cloudinary.com') && vUrl.contains('/video/upload/')) {
+      return vUrl
+          .replaceFirst(
+            RegExp(r'\.(mp4|webm|mov|mkv|m4v)(\?.*)?$', caseSensitive: false),
+            '.jpg',
+          )
+          .replaceFirst('/video/upload/', '/video/upload/so_2,w_640,h_360,c_fill/');
+    }
+    return null;
+  }
+
   String get durationLabel {
     if (duration.inSeconds <= 0) return '--:--';
     final hours = duration.inHours;

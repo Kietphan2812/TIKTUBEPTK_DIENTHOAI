@@ -682,13 +682,15 @@ Handler createApi(
     final description = (body['description'] as String?)?.trim() ?? '';
     final category = (body['category'] as String?)?.trim() ?? '';
     final tags = _parseTags(body['tags']);
+    final thumbnailUrl = (body['thumbnailUrl'] as String?)?.trim();
+    final isKidsOnly = body['isKidsOnly'] is bool ? body['isKidsOnly'] as bool : null;
 
     _validateVideoFields(
       title: title,
       description: description,
       category: category,
       tags: tags,
-      age: 'kids',
+      age: isKidsOnly == false ? '18' : 'kids',
     );
 
     final updated = await db.updateVideo(
@@ -698,6 +700,8 @@ Handler createApi(
       description: description,
       category: category,
       tags: tags,
+      thumbnailUrl: (thumbnailUrl != null && thumbnailUrl.isNotEmpty) ? thumbnailUrl : null,
+      isKidsOnly: isKidsOnly,
     );
     if (!updated) {
       throw ApiError(404, 'Không tìm thấy video hoặc bạn không có quyền sửa.');
@@ -894,6 +898,14 @@ Handler createApi(
       onlySubscribed: true,
     );
     return _json(<String, Object?>{'items': channels});
+  });
+
+  router.get('/api/subscribers', (Request request) async {
+    final session = await _requireSession(db, request);
+    final subscribers = await db.listSubscribers(
+      userKey: session['userKey'] as String,
+    );
+    return _json(<String, Object?>{'items': subscribers});
   });
 
   router.get('/api/feed/subscriptions', (Request request) async {

@@ -1326,6 +1326,39 @@ order by u.ten_dang_nhap
     return result.map(_channelFromRow).toList();
   }
 
+  Future<List<Map<String, Object?>>> listSubscribers({
+    required String userKey,
+  }) async {
+    final currentUserId = await _userIdForKey(userKey);
+    if (currentUserId == null) return const <Map<String, Object?>>[];
+
+    final result = await _pool.execute(
+      Sql.named('''
+select u.nguoi_dung_id, u.ten_dang_nhap,
+       (
+         select count(*)::int from video v
+         where v.nguoi_dung_id = u.nguoi_dung_id
+           and v.trang_thai in ('da_duyet', 'approved')
+       ) as video_count,
+       (
+         select count(*)::int from dang_ky_kenh dk
+         where dk.kenh_id = u.nguoi_dung_id
+       ) as subscriber_count,
+       exists(
+         select 1 from dang_ky_kenh dks
+         where dks.kenh_id = u.nguoi_dung_id
+           and dks.nguoi_dung_id = @currentUserId::int
+       ) as subscribed
+from nguoi_dung u
+join dang_ky_kenh dk on dk.nguoi_dung_id = u.nguoi_dung_id
+where dk.kenh_id = @currentUserId
+order by dk.ngay_tao desc, u.ten_dang_nhap
+'''),
+      parameters: {'currentUserId': currentUserId},
+    );
+    return result.map(_channelFromRow).toList();
+  }
+
   Future<Map<String, Object?>?> setSubscription({
     required String channelId,
     required bool subscribed,
@@ -1709,6 +1742,8 @@ where kenh_id = @userId and nguoi_dung_id <> @userId
     required String description,
     required String category,
     required List<String> tags,
+    String? thumbnailUrl,
+    bool? isKidsOnly,
   }) async {
     final currentUserId = await _userIdForKey(userKey);
     final videoId = _intId(id);
@@ -1731,6 +1766,8 @@ update video
 set tieu_de = @title,
     mo_ta = @description,
     danh_muc_id = @categoryId,
+    duong_dan_anh_bia = coalesce(@thumbnailUrl, duong_dan_anh_bia),
+    danh_cho_tre_em = coalesce(@isKidsOnly, danh_cho_tre_em),
     ngay_cap_nhat = now()
 where video_id = @videoId and nguoi_dung_id = @userId
 '''),
@@ -1740,6 +1777,8 @@ where video_id = @videoId and nguoi_dung_id = @userId
         'title': title,
         'description': _buildDescription(description, tags),
         'categoryId': categoryId,
+        'thumbnailUrl': thumbnailUrl,
+        'isKidsOnly': isKidsOnly,
       },
     );
     return result.affectedRows > 0;

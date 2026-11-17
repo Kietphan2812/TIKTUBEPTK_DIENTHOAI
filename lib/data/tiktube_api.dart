@@ -84,6 +84,8 @@ abstract interface class TikTubeApi {
     required String description,
     required String category,
     required List<String> tags,
+    String? thumbnailUrl,
+    bool? isKidsOnly,
   });
 
   Future<void> deleteVideo(String videoId);
@@ -95,6 +97,9 @@ abstract interface class TikTubeApi {
   Future<List<Channel>> fetchChannels();
 
   Future<List<Channel>> fetchSubscriptions();
+
+  /// Những người dùng đã đăng ký kênh của tôi.
+  Future<List<Channel>> fetchSubscribers();
 
   /// Video mới nhất từ các kênh người dùng đang đăng ký.
   Future<List<Video>> fetchSubscriptionFeed({int limit = 30});

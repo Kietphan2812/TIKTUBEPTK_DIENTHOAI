@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import '../data/api_client.dart';
+import '../data/chat_service.dart';
 import '../data/sample_data.dart';
 import '../data/tiktube_api.dart';
 import '../models/video.dart';
@@ -19,9 +20,10 @@ import 'quick_upload_screen.dart';
 import 'stats_screen.dart';
 
 class UploadScreen extends StatefulWidget {
-  const UploadScreen({super.key, this.api});
+  const UploadScreen({super.key, this.api, this.editVideo});
 
   final TikTubeApi? api;
+  final Video? editVideo;
 
   @override
   State<UploadScreen> createState() => _UploadScreenState();
@@ -44,16 +46,32 @@ class _UploadScreenState extends State<UploadScreen> {
   bool _kidsOnly = true;
   PlatformFile? _file;
   Uint8List? _bytes;
+  PlatformFile? _coverFile;
+  Uint8List? _coverBytes;
+  String? _existingThumbnailUrl;
+  String? _existingVideoUrl;
   bool _uploading = false;
   bool _uploadComplete = false;
   double _uploadProgress = 0;
   final Stopwatch _uploadWatch = Stopwatch();
   Timer? _uploadTicker;
 
+  bool get isEditing => widget.editVideo != null;
+
   @override
   void initState() {
     super.initState();
     _api = widget.api ?? ApiClient();
+    if (widget.editVideo != null) {
+      final v = widget.editVideo!;
+      _title.text = v.title;
+      _description.text = v.description;
+      _category = v.category;
+      _tags.addAll(v.tags);
+      _kidsOnly = v.isKidsOnly;
+      _existingThumbnailUrl = v.effectiveThumbnailUrl;
+      _existingVideoUrl = v.videoUrl;
+    }
     _title.addListener(_onTitleChanged);
     _loadCategoryTags();
   }
@@ -169,14 +187,93 @@ class _UploadScreenState extends State<UploadScreen> {
     }
   }
 
+  Future<void> _pickCover() async {
+    if (_uploading) return;
+    try {
+      final PlatformFile? file = await FilePicker.pickFile(
+        type: FileType.image,
+      );
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) {
+        _notify('Không đọc được tệp ảnh bìa đã chọn.');
+        return;
+      }
+      if (bytes.length > 10 * 1024 * 1024) {
+        _notify('Ảnh bìa vượt quá giới hạn 10 MB.');
+        return;
+      }
+      setState(() {
+        _coverFile = file;
+        _coverBytes = bytes;
+      });
+      _notify('Đã chọn ảnh bìa: ${file.name}');
+    } catch (error) {
+      _notify('Không mở được trình chọn ảnh: $error');
+    }
+  }
+
+  void _removeCover() {
+    if (_uploading) return;
+    setState(() {
+      _coverFile = null;
+      _coverBytes = null;
+      _existingThumbnailUrl = null;
+    });
+    _notify('Đã gỡ ảnh bìa tùy chọn.');
+  }
+
   Future<void> _submit() async {
     if (_uploading) return;
-    if (_bytes == null || _file == null) {
-      _notify('Vui lòng chọn video để tải lên.');
-      return;
-    }
     if (_title.text.trim().isEmpty) {
       _notify('Vui lòng nhập tiêu đề video.');
+      return;
+    }
+
+    if (isEditing) {
+      setState(() {
+        _uploading = true;
+      });
+      try {
+        String? newThumbUrl = _existingThumbnailUrl;
+        if (_coverBytes != null) {
+          _notify('Đang tải ảnh bìa mới lên Cloudinary...');
+          final uploadedUrl = await ChatService.instance.uploadImage(
+            _coverBytes!,
+            _coverFile?.name ?? 'cover.jpg',
+          );
+          if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
+            newThumbUrl = uploadedUrl;
+          }
+        }
+
+        final List<String> uploadTags = List<String>.of(_tags);
+        if (!_kidsOnly && !uploadTags.contains('18+')) {
+          uploadTags.add('18+');
+        }
+
+        final updated = await _api.updateVideo(
+          widget.editVideo!.id,
+          title: _title.text.trim(),
+          description: _description.text.trim(),
+          category: _category,
+          tags: uploadTags,
+          thumbnailUrl: newThumbUrl,
+          isKidsOnly: _kidsOnly,
+        );
+        if (!mounted) return;
+        _notify('Đã cập nhật video “${updated.title}” thành công!');
+        Navigator.of(context).pop(updated);
+      } catch (error) {
+        if (!mounted) return;
+        setState(() => _uploading = false);
+        _notify('Không cập nhật được video: $error');
+      }
+      return;
+    }
+
+    if (_bytes == null || _file == null) {
+      _notify('Vui lòng chọn video để tải lên.');
       return;
     }
 
@@ -199,7 +296,7 @@ class _UploadScreenState extends State<UploadScreen> {
     }
 
     try {
-      final video = await _api.uploadVideo(
+      var video = await _api.uploadVideo(
         title: _title.text.trim(),
         description: _description.text.trim(),
         category: _category,
@@ -214,6 +311,28 @@ class _UploadScreenState extends State<UploadScreen> {
           });
         },
       );
+
+      // Nếu người dùng đã chọn ảnh bìa tùy chọn từ thiết bị
+      if (_coverBytes != null) {
+        try {
+          final customThumb = await ChatService.instance.uploadImage(
+            _coverBytes!,
+            _coverFile?.name ?? 'cover.jpg',
+          );
+          if (customThumb != null && customThumb.isNotEmpty) {
+            video = await _api.updateVideo(
+              video.id,
+              title: video.title,
+              description: video.description,
+              category: video.category,
+              tags: video.tags,
+              thumbnailUrl: customThumb,
+              isKidsOnly: video.isKidsOnly,
+            );
+          }
+        } catch (_) {}
+      }
+
       if (!mounted) return;
       setState(() {
         _uploadProgress = 1;
@@ -360,7 +479,7 @@ class _UploadScreenState extends State<UploadScreen> {
       body: Column(
         children: <Widget>[
           SectionTopBar(
-            title: 'Đăng video',
+            title: widget.editVideo != null ? 'Sửa video' : 'Đăng video',
             onBack: () => Navigator.of(context).maybePop(),
             onHome: _goHome,
             onAccount: _openAccount,
@@ -387,6 +506,7 @@ class _UploadScreenState extends State<UploadScreen> {
 
                             final Widget form = _UploadForm(
                               compact: compact,
+                              isEditing: isEditing,
                               titleController: _title,
                               descriptionController: _description,
                               hashtagController: _hashtag,
@@ -400,6 +520,10 @@ class _UploadScreenState extends State<UploadScreen> {
                               picked: _file != null,
                               fileName: _file?.name,
                               fileSizeLabel: _fileSizeLabel,
+                              coverBytes: _coverBytes,
+                              coverFileName: _coverFile?.name,
+                              existingThumbnailUrl: _existingThumbnailUrl,
+                              existingVideoUrl: _existingVideoUrl,
                               uploading: _uploading,
                               uploadProgress: _uploadProgress,
                               uploadStatus: _uploadStatus,
@@ -420,9 +544,8 @@ class _UploadScreenState extends State<UploadScreen> {
                                   : () => Navigator.of(context).maybePop(),
                               onQuickUpload: _handleQuickUpload,
                               onSubmit: _submit,
-                              onCover: () => _notify(
-                                'Ảnh bìa sẽ được Cloudinary tạo tự động từ video.',
-                              ),
+                              onCover: _pickCover,
+                              onRemoveCover: _removeCover,
                             );
 
                             final Widget preview = _PhonePreview(
@@ -467,6 +590,7 @@ class _UploadScreenState extends State<UploadScreen> {
 class _UploadForm extends StatelessWidget {
   const _UploadForm({
     required this.compact,
+    this.isEditing = false,
     required this.titleController,
     required this.descriptionController,
     required this.hashtagController,
@@ -480,6 +604,10 @@ class _UploadForm extends StatelessWidget {
     required this.picked,
     required this.fileName,
     required this.fileSizeLabel,
+    this.coverBytes,
+    this.coverFileName,
+    this.existingThumbnailUrl,
+    this.existingVideoUrl,
     required this.uploading,
     required this.uploadProgress,
     required this.uploadStatus,
@@ -497,8 +625,10 @@ class _UploadForm extends StatelessWidget {
     required this.onQuickUpload,
     required this.onSubmit,
     required this.onCover,
+    required this.onRemoveCover,
   });
 
+  final bool isEditing;
   final TextEditingController titleController;
   final TextEditingController descriptionController;
   final TextEditingController hashtagController;
@@ -513,6 +643,10 @@ class _UploadForm extends StatelessWidget {
   final bool picked;
   final String? fileName;
   final String fileSizeLabel;
+  final Uint8List? coverBytes;
+  final String? coverFileName;
+  final String? existingThumbnailUrl;
+  final String? existingVideoUrl;
   final bool uploading;
   final double uploadProgress;
   final String uploadStatus;
@@ -530,6 +664,7 @@ class _UploadForm extends StatelessWidget {
   final VoidCallback onQuickUpload;
   final VoidCallback onSubmit;
   final VoidCallback onCover;
+  final VoidCallback onRemoveCover;
 
   @override
   Widget build(BuildContext context) {
@@ -551,7 +686,7 @@ class _UploadForm extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            'Tải video',
+            isEditing ? 'Sửa video' : 'Tải video',
             style: TextStyle(
               fontSize: compact ? 18 : 20,
               fontWeight: FontWeight.w800,
@@ -561,45 +696,51 @@ class _UploadForm extends StatelessWidget {
           ),
           const SizedBox(height: 3),
           Text(
-            'Đăng video vào tài khoản của bạn',
+            isEditing
+                ? 'Cập nhật tiêu đề, danh mục, mô tả và ảnh bìa cho video của bạn'
+                : 'Đăng video vào tài khoản của bạn',
             style: TextStyle(fontSize: 12, color: p.textSecondary),
           ),
           const SizedBox(height: 14),
-          _QuickUploadBanner(onTap: onQuickUpload),
-          const SizedBox(height: 14),
+          if (!isEditing) ...<Widget>[
+            _QuickUploadBanner(onTap: onQuickUpload),
+            const SizedBox(height: 14),
+          ],
           MouseRegion(
             cursor: SystemMouseCursors.click,
             child: GestureDetector(
               onTap: uploading ? null : onPick,
               child: DashedBox(
-                color: picked
+                color: (picked || isEditing)
                     ? const Color(0xFF2E9E62).withValues(alpha: 0.7)
                     : p.border,
                 radius: 8,
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 30),
+                  padding: const EdgeInsets.symmetric(vertical: 24),
                   child: Column(
                     children: <Widget>[
                       Icon(
                         uploading
                             ? Icons.cloud_upload_outlined
-                            : picked
+                            : (picked || isEditing)
                             ? Icons.check_circle_outline_rounded
                             : Icons.photo_size_select_actual_outlined,
                         size: 34,
                         color: uploading
                             ? p.brandRed
-                            : picked
+                            : (picked || isEditing)
                             ? const Color(0xFF2E9E62)
                             : p.textSecondary,
                       ),
                       const SizedBox(height: 10),
                       Text(
                         uploading
-                            ? 'Đang tải video lên Cloudinary...'
+                            ? (isEditing ? 'Đang cập nhật video...' : 'Đang tải video lên Cloudinary...')
                             : picked
                             ? (fileName ?? 'video.mp4')
+                            : isEditing
+                            ? 'Video hiện tại: Sẵn sàng (Nhấn để chọn tệp mới nếu muốn thay)'
                             : 'Chọn video để tải lên',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -612,9 +753,11 @@ class _UploadForm extends StatelessWidget {
                       const SizedBox(height: 3),
                       Text(
                         uploading
-                            ? 'Vui lòng giữ trang mở trong khi tải lên.'
+                            ? 'Vui lòng giữ trang mở trong khi xử lý.'
                             : picked
                             ? 'Đã chọn · $fileSizeLabel · Nhấn để đổi tập tin'
+                            : isEditing
+                            ? 'Bạn có thể giữ nguyên video cũ hoặc chọn video mới'
                             : 'Hoặc kéo và thả tập tin',
                         style: TextStyle(
                           fontSize: 11.5,
@@ -762,7 +905,7 @@ class _UploadForm extends StatelessWidget {
             children: <Widget>[
               Expanded(
                 child: Text(
-                  'Ảnh bìa (ảnh nên có điện thoại)',
+                  'Ảnh bìa (ảnh nền video)',
                   style: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w600,
@@ -774,14 +917,166 @@ class _UploadForm extends StatelessWidget {
                 cursor: SystemMouseCursors.click,
                 child: GestureDetector(
                   onTap: onCover,
-                  child: Text(
-                    'Chọn ảnh bìa từ thiết bị',
-                    style: TextStyle(fontSize: 10.5, color: p.brandRed),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Icon(Icons.add_photo_alternate_rounded, size: 14, color: p.brandRed),
+                      const SizedBox(width: 4),
+                      Text(
+                        (coverBytes != null || (existingThumbnailUrl != null && existingThumbnailUrl!.isNotEmpty))
+                            ? 'Thay đổi ảnh bìa'
+                            : 'Chọn ảnh bìa từ thiết bị',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: p.brandRed,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 10),
+          if (coverBytes != null)
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: p.brandRed.withValues(alpha: 0.6), width: 1.5),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(9),
+                child: Stack(
+                  children: <Widget>[
+                    AspectRatio(
+                      aspectRatio: 16 / 9,
+                      child: Image.memory(coverBytes!, fit: BoxFit.cover),
+                    ),
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.black87,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Icon(Icons.check_circle_rounded, size: 12, color: Color(0xFF2E9E62)),
+                            SizedBox(width: 4),
+                            Text(
+                              'Ảnh bìa mới đã chọn',
+                              style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: IconButton(
+                        onPressed: onRemoveCover,
+                        style: IconButton.styleFrom(backgroundColor: Colors.black54),
+                        icon: const Icon(Icons.close_rounded, color: Colors.white, size: 18),
+                        tooltip: 'Gỡ ảnh bìa này',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else if (existingThumbnailUrl != null && existingThumbnailUrl!.isNotEmpty)
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: p.border),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(9),
+                child: Stack(
+                  children: <Widget>[
+                    AspectRatio(
+                      aspectRatio: 16 / 9,
+                      child: Image.network(
+                        existingThumbnailUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => Container(
+                          color: p.surface,
+                          child: const Center(
+                            child: Icon(Icons.broken_image_rounded, color: Colors.grey),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.black87,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text(
+                          'Ảnh bìa hiện tại',
+                          style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: FilledButton.tonalIcon(
+                        onPressed: onCover,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.black54,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        icon: const Icon(Icons.photo_library_outlined, size: 14),
+                        label: const Text('Đổi ảnh', style: TextStyle(fontSize: 11)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: onCover,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  decoration: BoxDecoration(
+                    color: p.chip.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: p.border, style: BorderStyle.solid),
+                  ),
+                  child: Column(
+                    children: <Widget>[
+                      Icon(Icons.add_photo_alternate_outlined, size: 28, color: p.textSecondary),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Chưa chọn ảnh bìa riêng',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: p.textPrimary),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Nhấn vào đây để tải ảnh bìa từ máy lên (hoặc để trống sẽ tự lấy từ video)',
+                        style: TextStyle(fontSize: 10.5, color: p.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           const SizedBox(height: 16),
           Text(
             'Ai có thể xem video này?',
@@ -844,33 +1139,35 @@ class _UploadForm extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                flex: 3,
-                child: SizedBox(
-                  height: 40,
-                  child: OutlinedButton.icon(
-                    onPressed: uploading ? null : onQuickUpload,
-                    icon: Icon(Icons.bolt_rounded, size: 16, color: p.brandRed),
-                    label: Text(
-                      'Đăng nhanh',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                        color: p.brandRed,
+              if (!isEditing) ...<Widget>[
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 3,
+                  child: SizedBox(
+                    height: 40,
+                    child: OutlinedButton.icon(
+                      onPressed: uploading ? null : onQuickUpload,
+                      icon: Icon(Icons.bolt_rounded, size: 16, color: p.brandRed),
+                      label: Text(
+                        'Đăng nhanh',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: p.brandRed,
+                        ),
                       ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: p.brandRed,
-                      side: BorderSide(color: p.brandRed, width: 1.2),
-                      backgroundColor: p.brandRed.withValues(alpha: 0.05),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(6),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: p.brandRed,
+                        side: BorderSide(color: p.brandRed, width: 1.2),
+                        backgroundColor: p.brandRed.withValues(alpha: 0.05),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(6),
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
+              ],
               const SizedBox(width: 8),
               Expanded(
                 flex: 3,
@@ -879,8 +1176,8 @@ class _UploadForm extends StatelessWidget {
                   child: FilledButton(
                     onPressed: uploading ? null : onSubmit,
                     style: FilledButton.styleFrom(
-                      backgroundColor: p.textPrimary,
-                      foregroundColor: p.surface,
+                      backgroundColor: isEditing ? p.brandRed : p.textPrimary,
+                      foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(6),
                       ),
@@ -893,20 +1190,20 @@ class _UploadForm extends StatelessWidget {
                                 width: 14,
                                 height: 14,
                                 child: uploadComplete
-                                    ? Icon(
+                                    ? const Icon(
                                         Icons.check_rounded,
                                         size: 14,
-                                        color: p.surface,
+                                        color: Colors.white,
                                       )
-                                    : CircularProgressIndicator(
+                                    : const CircularProgressIndicator(
                                         strokeWidth: 2,
-                                        color: p.surface,
+                                        color: Colors.white,
                                       ),
                               ),
                               const SizedBox(width: 8),
                               Text(
                                 uploadComplete
-                                    ? 'Đã đăng'
+                                    ? (isEditing ? 'Đã lưu' : 'Đã đăng')
                                     : uploadProgress >= 1
                                     ? 'Đang xử lý...'
                                     : '${(uploadProgress * 100).round()}%',
@@ -917,9 +1214,9 @@ class _UploadForm extends StatelessWidget {
                               ),
                             ],
                           )
-                        : const Text(
-                            'Đăng video',
-                            style: TextStyle(
+                        : Text(
+                            isEditing ? 'Lưu thay đổi video' : 'Đăng video',
+                            style: const TextStyle(
                               fontSize: 12.5,
                               fontWeight: FontWeight.w700,
                             ),

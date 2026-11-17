@@ -20,6 +20,7 @@ class VideoThumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final String? thumbUrl = video.effectiveThumbnailUrl;
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: AspectRatio(
@@ -27,9 +28,9 @@ class VideoThumb extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: <Widget>[
-            if (video.thumbnailUrl != null)
+            if (thumbUrl != null)
               Image.network(
-                video.thumbnailUrl!,
+                thumbUrl,
                 fit: BoxFit.cover,
                 errorBuilder: (
                   BuildContext context,
@@ -63,7 +64,7 @@ class VideoThumb extends StatelessWidget {
               )
             else
               _Backdrop(colors: video.colors),
-            if (video.thumbnailUrl != null)
+            if (thumbUrl != null)
               DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -116,6 +117,9 @@ class _DurationBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (video.duration.inSeconds <= 0) {
+      return const SizedBox.shrink();
+    }
     final titleLower = video.title.toLowerCase();
     final bool isMusic = video.category == 'Âm nhạc' ||
         video.category == 'Âm nhạc & sáng tạo' ||
@@ -210,6 +214,24 @@ class _Backdrop extends StatelessWidget {
                   Colors.black.withValues(alpha: 0.28),
                 ],
                 stops: const <double>[0.55, 1],
+              ),
+            ),
+          ),
+          Center(
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.35),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  width: 1.2,
+                ),
+              ),
+              child: const Icon(
+                Icons.play_arrow_rounded,
+                color: Colors.white,
+                size: 24,
               ),
             ),
           ),

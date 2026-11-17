@@ -281,6 +281,8 @@ class ApiClient implements TikTubeApi {
     required String description,
     required String category,
     required List<String> tags,
+    String? thumbnailUrl,
+    bool? isKidsOnly,
   }) async {
     final data = await _request(
       'PATCH',
@@ -290,6 +292,8 @@ class ApiClient implements TikTubeApi {
         'description': description,
         'category': category,
         'tags': tags,
+        'thumbnailUrl': ?thumbnailUrl,
+        'isKidsOnly': ?isKidsOnly,
       },
     );
     return Video.fromJson(data['video'] as Map<String, dynamic>);
@@ -310,6 +314,16 @@ class ApiClient implements TikTubeApi {
   Future<List<Channel>> fetchSubscriptions() async {
     final data = await _request('GET', _uri('/api/subscriptions'));
     return _channelList(data);
+  }
+
+  @override
+  Future<List<Channel>> fetchSubscribers() async {
+    try {
+      final data = await _request('GET', _uri('/api/subscribers'));
+      return _channelList(data);
+    } catch (_) {
+      return const <Channel>[];
+    }
   }
 
   @override

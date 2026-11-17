@@ -371,12 +371,12 @@ class _QuickWatchPageState extends State<QuickWatchPage> {
           fit: StackFit.expand,
           children: <Widget>[
             // Nền phía sau: ambient backdrop mờ nhẹ từ thumbnail của video để không bị viền đen thô
-            if ((widget.video.thumbnailUrl ?? '').trim().isNotEmpty)
+            if ((widget.video.effectiveThumbnailUrl ?? '').trim().isNotEmpty)
               Positioned.fill(
                 child: Opacity(
                   opacity: 0.28,
                   child: Image.network(
-                    widget.video.thumbnailUrl!,
+                    widget.video.effectiveThumbnailUrl!,
                     fit: BoxFit.cover,
                     errorBuilder: (_, _, _) => const SizedBox.shrink(),
                   ),
@@ -541,13 +541,13 @@ class _Poster extends StatelessWidget {
             ),
           ),
         ),
-        if ((video.thumbnailUrl ?? '').trim().isNotEmpty) ...<Widget>[
+        if ((video.effectiveThumbnailUrl ?? '').trim().isNotEmpty) ...<Widget>[
           // Nền mờ phía sau
           Positioned.fill(
             child: Opacity(
               opacity: 0.28,
               child: Image.network(
-                video.thumbnailUrl!,
+                video.effectiveThumbnailUrl!,
                 fit: BoxFit.cover,
                 errorBuilder: (_, _, _) => const SizedBox.shrink(),
               ),
@@ -556,7 +556,7 @@ class _Poster extends StatelessWidget {
           // Ảnh thumbnail hiển thị theo đúng tỷ lệ gốc hoặc cover
           Center(
             child: Image.network(
-              video.thumbnailUrl!,
+              video.effectiveThumbnailUrl!,
               fit: isCover ? BoxFit.cover : BoxFit.contain,
               errorBuilder: (_, _, _) => const SizedBox.shrink(),
             ),

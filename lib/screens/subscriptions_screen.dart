@@ -28,6 +28,7 @@ class SubscriptionsScreen extends StatefulWidget {
 class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   late final TikTubeApi _api;
   List<Channel> _channels = <Channel>[];
+  List<Channel> _subscribers = <Channel>[];
   List<Video> _videos = <Video>[];
   int _tab = 0;
   bool _loading = true;
@@ -50,12 +51,14 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         <Future<dynamic>>[
           _api.fetchSubscriptionFeed(limit: 30),
           _api.fetchSubscriptions(),
+          _api.fetchSubscribers(),
         ],
       );
       if (!mounted) return;
       setState(() {
         _videos = results[0] as List<Video>;
         _channels = results[1] as List<Channel>;
+        _subscribers = results[2] as List<Channel>;
         _loading = false;
       });
     } catch (error) {
@@ -102,6 +105,31 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         _videos = <Video>[...removedVideos, ..._videos];
       });
       _notify('Không hủy được đăng ký — kiểm tra API/Neon.');
+    }
+  }
+
+  Future<void> _toggleFollowSubscriber(Channel channel) async {
+    final bool newSub = !channel.subscribed;
+    final int index = _subscribers.indexOf(channel);
+    if (index >= 0) {
+      setState(() {
+        _subscribers[index] = channel.copyWith(
+          subscribed: newSub,
+          subscriberCount: (channel.subscriberCount + (newSub ? 1 : -1)).clamp(0, 999999999),
+        );
+      });
+    }
+    _notify(newSub ? 'Đã đăng ký theo dõi lại kênh ${channel.name}.' : 'Đã hủy đăng ký kênh ${channel.name}.');
+    try {
+      await _api.setSubscription(channel.id, subscribed: newSub);
+    } catch (_) {
+      if (!mounted) return;
+      if (index >= 0) {
+        setState(() {
+          _subscribers[index] = channel;
+        });
+      }
+      _notify('Không cập nhật được đăng ký — kiểm tra kết nối.');
     }
   }
 
@@ -261,11 +289,40 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                           else if (_error != null)
                             DataError(message: _error!, onRetry: _load)
                           else if (_tab == 2)
-                            _EmptyState(
-                              icon: Icons.group_outlined,
-                              title: 'Chưa có ai đăng ký kênh bạn',
-                              subtitle: 'Hãy đăng video đều đặn để có thêm người theo dõi.',
-                            )
+                            _subscribers.isEmpty
+                                ? const _EmptyState(
+                                    icon: Icons.group_outlined,
+                                    title: 'Chưa có ai đăng ký kênh bạn',
+                                    subtitle: 'Hãy đăng video đều đặn để có thêm người theo dõi.',
+                                  )
+                                : compact
+                                ? Column(
+                                    children: <Widget>[
+                                      for (final Channel channel
+                                          in _subscribers) ...<Widget>[
+                                        _MobileChannelTile(
+                                          channel: channel,
+                                          isSubscriber: true,
+                                          onUnsubscribe: () =>
+                                              _toggleFollowSubscriber(channel),
+                                        ),
+                                        const SizedBox(height: 10),
+                                      ],
+                                    ],
+                                  )
+                                : Wrap(
+                                    spacing: 16,
+                                    runSpacing: 16,
+                                    children: <Widget>[
+                                      for (final Channel channel in _subscribers)
+                                        _ChannelCard(
+                                          channel: channel,
+                                          isSubscriber: true,
+                                          onUnsubscribe: () =>
+                                              _toggleFollowSubscriber(channel),
+                                        ),
+                                    ],
+                                  )
                           else if (_tab == 1)
                             _channels.isEmpty
                                 ? _EmptyState(
@@ -382,10 +439,12 @@ class _MobileChannelTile extends StatelessWidget {
   const _MobileChannelTile({
     required this.channel,
     required this.onUnsubscribe,
+    this.isSubscriber = false,
   });
 
   final Channel channel;
   final VoidCallback onUnsubscribe;
+  final bool isSubscriber;
 
   @override
   Widget build(BuildContext context) {
@@ -398,7 +457,7 @@ class _MobileChannelTile extends StatelessWidget {
             channelName: channel.name,
             channelId: channel.id,
             subscriberCount: channel.subscriberCount,
-            subscribed: true,
+            subscribed: channel.subscribed,
           ),
         ),
       );
@@ -476,22 +535,56 @@ class _MobileChannelTile extends StatelessWidget {
           const SizedBox(width: 8),
           SizedBox(
             height: 34,
-            child: OutlinedButton(
-              onPressed: onUnsubscribe,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: p.textPrimary,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                visualDensity: VisualDensity.compact,
-                side: BorderSide(color: p.border),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              child: const Text(
-                'Hủy đăng ký',
-                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600),
-              ),
-            ),
+            child: isSubscriber
+                ? (channel.subscribed
+                    ? OutlinedButton(
+                        onPressed: onUnsubscribe,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: p.textPrimary,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          visualDensity: VisualDensity.compact,
+                          side: BorderSide(color: p.border),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: const Text(
+                          'Đã đăng ký',
+                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600),
+                        ),
+                      )
+                    : FilledButton(
+                        onPressed: onUnsubscribe,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: p.brandRed,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          visualDensity: VisualDensity.compact,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: const Text(
+                          'Theo dõi lại',
+                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
+                        ),
+                      ))
+                : OutlinedButton(
+                    onPressed: onUnsubscribe,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: p.textPrimary,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      visualDensity: VisualDensity.compact,
+                      side: BorderSide(color: p.border),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: const Text(
+                      'Hủy đăng ký',
+                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600),
+                    ),
+                  ),
           ),
         ],
       ),
@@ -500,10 +593,15 @@ class _MobileChannelTile extends StatelessWidget {
 }
 
 class _ChannelCard extends StatelessWidget {
-  const _ChannelCard({required this.channel, required this.onUnsubscribe});
+  const _ChannelCard({
+    required this.channel,
+    required this.onUnsubscribe,
+    this.isSubscriber = false,
+  });
 
   final Channel channel;
   final VoidCallback onUnsubscribe;
+  final bool isSubscriber;
 
   @override
   Widget build(BuildContext context) {
@@ -516,7 +614,7 @@ class _ChannelCard extends StatelessWidget {
             channelName: channel.name,
             channelId: channel.id,
             subscriberCount: channel.subscriberCount,
-            subscribed: true,
+            subscribed: channel.subscribed,
           ),
         ),
       );
@@ -600,21 +698,53 @@ class _ChannelCard extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             height: 28,
-            child: OutlinedButton(
-              onPressed: onUnsubscribe,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: p.textPrimary,
-                padding: EdgeInsets.zero,
-                side: BorderSide(color: p.border),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(5),
-                ),
-              ),
-              child: const Text(
-                'Hủy đăng ký',
-                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600),
-              ),
-            ),
+            child: isSubscriber
+                ? (channel.subscribed
+                    ? OutlinedButton(
+                        onPressed: onUnsubscribe,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: p.textPrimary,
+                          padding: EdgeInsets.zero,
+                          side: BorderSide(color: p.border),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                        ),
+                        child: const Text(
+                          'Đã đăng ký',
+                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600),
+                        ),
+                      )
+                    : FilledButton(
+                        onPressed: onUnsubscribe,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: p.brandRed,
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.zero,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                        ),
+                        child: const Text(
+                          'Theo dõi lại',
+                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
+                        ),
+                      ))
+                : OutlinedButton(
+                    onPressed: onUnsubscribe,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: p.textPrimary,
+                      padding: EdgeInsets.zero,
+                      side: BorderSide(color: p.border),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                    ),
+                    child: const Text(
+                      'Hủy đăng ký',
+                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600),
+                    ),
+                  ),
           ),
         ],
       ),

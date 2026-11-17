@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../data/api_client.dart';
-import '../data/sample_data.dart';
 import '../data/tiktube_api.dart';
 import '../models/video.dart';
 import '../models/watch_history_item.dart';
@@ -14,6 +13,7 @@ import '../widgets/section_top_bar.dart';
 import '../widgets/video_thumb.dart';
 import 'account_screen.dart';
 import 'stats_screen.dart';
+import 'upload_screen.dart';
 import 'watch_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -158,29 +158,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Future<void> _editUpload(Video video) async {
-    final result = await showDialog<_EditResult>(
-      context: context,
-      builder: (BuildContext context) => _EditVideoDialog(video: video),
+    final updated = await Navigator.of(context).push<Video>(
+      MaterialPageRoute<Video>(
+        builder: (_) => UploadScreen(
+          api: _api,
+          editVideo: video,
+        ),
+      ),
     );
-    if (result == null) return;
-
-    try {
-      final updated = await _api.updateVideo(
-        video.id,
-        title: result.title,
-        description: result.description,
-        category: result.category,
-        tags: video.tags,
-      );
-      if (!mounted) return;
+    if (updated != null && mounted) {
       setState(() {
         final int index = _uploads.indexWhere((v) => v.id == video.id);
         if (index >= 0) _uploads[index] = updated;
       });
       _notify('Đã cập nhật video “${updated.title}”.');
-    } catch (error) {
-      if (!mounted) return;
-      _notify('Không cập nhật được video: $error');
     }
   }
 
@@ -874,124 +865,6 @@ class _EmptyState extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _EditResult {
-  const _EditResult({
-    required this.title,
-    required this.description,
-    required this.category,
-  });
-
-  final String title;
-  final String description;
-  final String category;
-}
-
-class _EditVideoDialog extends StatefulWidget {
-  const _EditVideoDialog({required this.video});
-
-  final Video video;
-
-  @override
-  State<_EditVideoDialog> createState() => _EditVideoDialogState();
-}
-
-class _EditVideoDialogState extends State<_EditVideoDialog> {
-  late final TextEditingController _title;
-  late final TextEditingController _description;
-  late String _category;
-
-  @override
-  void initState() {
-    super.initState();
-    _title = TextEditingController(text: widget.video.title);
-    _description = TextEditingController(text: widget.video.description);
-    _category = widget.video.category;
-    if (!kCategories.contains(_category)) {
-      _category = kCategories.firstWhere(
-        (String item) => item != 'Tất cả',
-        orElse: () => widget.video.category,
-      );
-    }
-  }
-
-  @override
-  void dispose() {
-    _title.dispose();
-    _description.dispose();
-    super.dispose();
-  }
-
-  void _save() {
-    final title = _title.text.trim();
-    if (title.isEmpty) return;
-    Navigator.of(context).pop(
-      _EditResult(
-        title: title,
-        description: _description.text.trim(),
-        category: _category,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Sửa video'),
-      content: SizedBox(
-        width: 430,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              TextField(
-                controller: _title,
-                decoration: const InputDecoration(
-                  labelText: 'Tiêu đề',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: _category,
-                decoration: const InputDecoration(
-                  labelText: 'Danh mục',
-                  border: OutlineInputBorder(),
-                ),
-                items: <DropdownMenuItem<String>>[
-                  for (final String item in kCategories)
-                    if (item != 'Tất cả')
-                      DropdownMenuItem<String>(value: item, child: Text(item)),
-                ],
-                onChanged: (String? value) {
-                  if (value != null) setState(() => _category = value);
-                },
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _description,
-                minLines: 3,
-                maxLines: 6,
-                decoration: const InputDecoration(
-                  labelText: 'Mô tả',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-      actions: <Widget>[
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Huỷ'),
-        ),
-        FilledButton(onPressed: _save, child: const Text('Lưu')),
-      ],
     );
   }
 }
