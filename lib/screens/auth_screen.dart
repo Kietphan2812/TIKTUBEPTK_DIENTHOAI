@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../auth/auth_controller.dart';
 import '../data/tiktube_api.dart';
+import '../utils/google_auth_service.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key, required this.controller});
@@ -116,31 +117,22 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> _handleGoogleSignIn() async {
     if (_submitting) return;
 
-    final chosen = await showModalBottomSheet<Map<String, String>>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (BuildContext ctx) => _GoogleAccountSheet(
-        suggestedEmail: _email.text.trim(),
-      ),
-    );
-
-    if (chosen == null || !mounted) return;
-
-    final selectedEmail = chosen['email'] ?? '';
-    final selectedName = chosen['name'] ?? '';
-
-    if (selectedEmail.isEmpty) return;
-
     setState(() {
       _submitting = true;
       _error = null;
     });
 
     try {
+      final result = await GoogleAuthService.instance.signIn();
+      if (result == null) {
+        if (mounted) setState(() => _submitting = false);
+        return;
+      }
+
       await widget.controller.loginWithGoogle(
-        email: selectedEmail,
-        name: selectedName.isNotEmpty ? selectedName : null,
+        email: result.email,
+        name: result.name,
+        avatarUrl: result.avatarUrl,
       );
 
       if (!mounted) return;
@@ -150,7 +142,7 @@ class _AuthScreenState extends State<AuthScreen> {
         ..showSnackBar(
           SnackBar(
             content: Text(
-              'Đăng nhập thành công với tài khoản Google $selectedEmail!',
+              'Đăng nhập thành công với tài khoản Google ${result.email}!',
             ),
             duration: const Duration(seconds: 2),
           ),
@@ -158,11 +150,17 @@ class _AuthScreenState extends State<AuthScreen> {
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() => _error = _friendlyError(error));
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
+      final msg = e.toString();
+      if (msg.contains('canceled') ||
+          msg.contains('cancelled') ||
+          msg.contains('closed')) {
+        setState(() => _submitting = false);
+        return;
+      }
       setState(
-        () => _error =
-            'Không thể kết nối tới máy chủ TIKTUBE. Kiểm tra kết nối mạng rồi thử lại.',
+        () => _error = 'Đăng nhập Google không thành công: $msg',
       );
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -2073,271 +2071,4 @@ class _GoogleLogoPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-/// Bottom Sheet hiện đại mô phỏng Google Account Chooser.
-class _GoogleAccountSheet extends StatefulWidget {
-  const _GoogleAccountSheet({this.suggestedEmail = ''});
-
-  final String suggestedEmail;
-
-  @override
-  State<_GoogleAccountSheet> createState() => _GoogleAccountSheetState();
-}
-
-class _GoogleAccountSheetState extends State<_GoogleAccountSheet> {
-  bool _showCustomInput = false;
-  final TextEditingController _customEmailController = TextEditingController();
-  final TextEditingController _customNameController = TextEditingController();
-
-  @override
-  void dispose() {
-    _customEmailController.dispose();
-    _customNameController.dispose();
-    super.dispose();
-  }
-
-  void _select(String email, String name) {
-    Navigator.of(context).pop(<String, String>{'email': email, 'name': name});
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    final String cleanSuggested = widget.suggestedEmail.trim();
-    final bool hasSuggested = cleanSuggested.isNotEmpty &&
-        cleanSuggested.contains('@') &&
-        cleanSuggested.toLowerCase() != 'kietphan4444@gmail.com';
-
-    return Container(
-      padding: EdgeInsets.fromLTRB(20, 12, 20, 24 + bottomInset),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Center(
-            child: Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: const Color(0xFFDADCE0),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          const SizedBox(height: 18),
-          const Row(
-            children: <Widget>[
-              SizedBox(
-                width: 24,
-                height: 24,
-                child: CustomPaint(painter: _GoogleLogoPainter()),
-              ),
-              SizedBox(width: 12),
-              Text(
-                'Đăng nhập bằng Google',
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF202124),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          const Padding(
-            padding: EdgeInsets.only(left: 36),
-            child: Text(
-              'Chọn một tài khoản để tiếp tục tới TIKTUBE',
-              style: TextStyle(
-                fontSize: 13,
-                color: Color(0xFF5F6368),
-              ),
-            ),
-          ),
-          const SizedBox(height: 18),
-          const Divider(height: 1, color: Color(0xFFE8EAED)),
-          const SizedBox(height: 10),
-
-          // Tài khoản mặc định chính: kietphan4444@gmail.com
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            leading: CircleAvatar(
-              radius: 20,
-              backgroundColor: const Color(0xFF1A73E8),
-              child: const Text(
-                'K',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16,
-                ),
-              ),
-            ),
-            title: const Text(
-              'Phan Tấn Kiệt (PTK)',
-              style: TextStyle(
-                fontSize: 14.5,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF202124),
-              ),
-            ),
-            subtitle: const Text(
-              'kietphan4444@gmail.com',
-              style: TextStyle(fontSize: 12.5, color: Color(0xFF5F6368)),
-            ),
-            trailing: const Icon(Icons.arrow_forward_ios_rounded,
-                size: 14, color: Color(0xFF5F6368)),
-            onTap: () => _select('kietphan4444@gmail.com', 'Phan Tấn Kiệt'),
-          ),
-
-          if (hasSuggested) ...<Widget>[
-            const Divider(height: 1, color: Color(0xFFF1F3F4)),
-            ListTile(
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-              leading: CircleAvatar(
-                radius: 20,
-                backgroundColor: const Color(0xFF34A853),
-                child: Text(
-                  cleanSuggested.substring(0, 1).toUpperCase(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-              title: Text(
-                cleanSuggested.split('@').first,
-                style: const TextStyle(
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF202124),
-                ),
-              ),
-              subtitle: Text(
-                cleanSuggested,
-                style:
-                    const TextStyle(fontSize: 12.5, color: Color(0xFF5F6368)),
-              ),
-              trailing: const Icon(Icons.arrow_forward_ios_rounded,
-                  size: 14, color: Color(0xFF5F6368)),
-              onTap: () =>
-                  _select(cleanSuggested, cleanSuggested.split('@').first),
-            ),
-          ],
-
-          const Divider(height: 1, color: Color(0xFFF1F3F4)),
-
-          // Sử dụng tài khoản khác
-          if (!_showCustomInput)
-            ListTile(
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-              leading: const CircleAvatar(
-                radius: 20,
-                backgroundColor: Color(0xFFF1F3F4),
-                child: Icon(Icons.person_add_alt_1_rounded,
-                    color: Color(0xFF1A73E8), size: 20),
-              ),
-              title: const Text(
-                'Sử dụng một tài khoản khác',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF1A73E8),
-                ),
-              ),
-              onTap: () => setState(() => _showCustomInput = true),
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  TextField(
-                    controller: _customEmailController,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: InputDecoration(
-                      labelText: 'Nhập địa chỉ Email Google / Gmail',
-                      hintText: 'vidu@gmail.com',
-                      prefixIcon: const Icon(Icons.email_outlined, size: 20),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 12),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _customNameController,
-                    decoration: InputDecoration(
-                      labelText: 'Tên hiển thị (Tùy chọn)',
-                      hintText: 'Họ và tên của bạn',
-                      prefixIcon: const Icon(Icons.badge_outlined, size: 20),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 12),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 42,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF1A73E8),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      onPressed: () {
-                        final email = _customEmailController.text.trim();
-                        if (email.isEmpty || !email.contains('@')) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Vui lòng nhập email hợp lệ.'),
-                              duration: Duration(seconds: 2),
-                            ),
-                          );
-                          return;
-                        }
-                        final name = _customNameController.text.trim();
-                        _select(
-                            email, name.isNotEmpty ? name : email.split('@').first);
-                      },
-                      child: const Text(
-                        'Tiếp tục với tài khoản này',
-                        style: TextStyle(
-                            fontSize: 14, fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-          const SizedBox(height: 16),
-          const Text(
-            'Để tiếp tục, Google sẽ chia sẻ tên, địa chỉ email, tùy chọn ngôn ngữ và ảnh hồ sơ của bạn với TIKTUBE. Trước khi sử dụng ứng dụng này, hãy xem lại Chính sách quyền riêng tư và Điều khoản dịch vụ của TIKTUBE.',
-            style: TextStyle(
-              fontSize: 11,
-              color: Color(0xFF70757A),
-              height: 1.4,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
