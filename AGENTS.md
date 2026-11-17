@@ -324,7 +324,9 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
 
 ### 3.22. Trích xuất Thumbnail tự động, Toàn trang Sửa video kèm Ảnh bìa & Danh sách Người theo dõi thật
 - **Trích xuất ảnh Thumbnail tự động & Khắc phục thời lượng `--:--`:**
-  - Bổ sung getter `effectiveThumbnailUrl` trong [Video](file:///d:/flutter_app_ptk/lib/models/video.dart): ưu tiên `thumbnailUrl` đã lưu, nếu rỗng và video lưu trên Cloudinary sẽ tự động rewrite URL thành ảnh tĩnh tại giây thứ 2 (`/upload/so_2,w_640,h_360,c_fill/...jpg`).
+  - Bổ sung getter `effectiveThumbnailUrl` trong [Video](file:///d:/flutter_app_ptk/lib/models/video.dart): hỗ trợ nhận diện và trích xuất ảnh bìa chất lượng cao từ cả Google Drive (`https://lh3.googleusercontent.com/d/<DRIVE_ID>`) lẫn Cloudinary frame 2s (`/upload/so_2,w_640,h_360,c_fill/...jpg`).
+  - Tự động phát hiện và chuyển đổi các link Cloudinary giả chứa ID Google Drive sang URL thumbnail chính thức của Google Drive.
+  - Đã chạy cập nhật trực tiếp 51 video trong bảng `video` của Neon PostgreSQL sang URL thumbnail thật `https://lh3.googleusercontent.com/d/<id>`, giải quyết triệt để tình trạng video không có hình bìa trên cả Web, Mobile và Desktop.
   - Cập nhật [VideoThumb](file:///d:/flutter_app_ptk/lib/widgets/video_thumb.dart) và [QuickWatchPage](file:///d:/flutter_app_ptk/lib/widgets/quick_watch_page.dart) sử dụng `effectiveThumbnailUrl`.
   - Với các video có thời lượng <= 0, ẩn hoàn toàn badge thời lượng thay vì hiển thị `--:--` gây mất thẩm mỹ.
 - **Trang Sửa video toàn diện (`UploadScreen(editVideo: video)`):**
@@ -333,9 +335,10 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
   - Tích hợp tính năng **Chọn ảnh bìa từ thiết bị**: người dùng có thể bấm "Chọn ảnh bìa" để tải ảnh thumbnail mới từ máy lên Cloudinary (`ChatService.instance.uploadImage`) hoặc xoá ảnh bìa tuỳ thích.
   - Hỗ trợ xem trước video đã đăng ngay trong khung phát preview 16:9.
 - **Kích hoạt Tab Người theo dõi / Người đăng ký (Subscribers):**
-  - Backend API: Thêm endpoint `GET /api/subscribers` và hàm `listSubscribers()` trong `server/lib/db.dart` & `server/lib/api.dart` truy vấn trực tiếp bảng `dang_ky_kenh` kết hợp với `nguoi_dung` trong Neon PostgreSQL.
+  - Backend API: Thêm endpoint `GET /api/subscribers` và hàm `listSubscribers()` trong `server/lib/db.dart` & `server/lib/api.dart`. Sửa lỗi mệnh đề sắp xếp bảng `dang_ky_kenh` từ `ngay_tao` sang đúng tên cột `ngay_dang_ky`, truy vấn chuẩn xác danh sách người đăng ký của tài khoản.
   - Client API: Bổ sung `fetchSubscribers()` trong `TikTubeApi` và `ApiClient`.
   - Màn hình Đăng ký ([SubscriptionsScreen](file:///d:/flutter_app_ptk/lib/screens/subscriptions_screen.dart)): Tab 2 ("Người theo dõi") hiển thị danh sách người dùng đang theo dõi kênh của bạn với avatar, tên, username, số video, và nút Đăng ký lại / Huỷ đăng ký hai chiều mượt mà.
+  - Cập nhật thư mục `docs/` để đồng bộ bản dựng Web PWA mới nhất lên GitHub Pages.
 
 ---
 
