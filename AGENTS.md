@@ -305,6 +305,21 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
 
 ---
 
+### 3.21. Đăng nhập Google thật (Google Identity Services & google_sign_in)
+- **Thư viện chuẩn:** `google_sign_in: ^7.2.0`.
+- **Cấu hình Google Cloud Console (Dự án `elegant-matrix-514123-i9`):**
+  - Trạng thái công bố: **In production** (Sẵn sàng phục vụ mọi người dùng có tài khoản Google mà không bị giới hạn Test Users).
+  - Web Client ID: `767308821556-u8m4lou3li7a97avu47c9mkd5569lj4v.apps.googleusercontent.com`.
+  - Tích hợp GIS SDK: `<script src="https://accounts.google.com/gsi/client" async defer></script>` và thẻ `<meta name="google-signin-client_id" ...>` trong `web/index.html`.
+- **Dịch vụ `GoogleAuthService` (`lib/utils/google_auth_service.dart`):**
+  - Khởi tạo `GoogleSignIn.instance.initialize(clientId: kIsWeb ? googleClientId : null)`.
+  - Xác thực người dùng bằng `GoogleSignIn.instance.authenticate(scopeHint: ['email', 'profile', 'openid'])`.
+  - Hiển thị hộp thoại Google Account Chooser chính thức (`accounts.google.com`) liệt kê toàn bộ các tài khoản Google đã lưu trong trình duyệt hoặc thiết bị của người dùng (`tho2050py@gmail.com`, `kietphan12c2@gmail.com`, v.v.).
+  - Loại bỏ hoàn toàn bottom sheet giả lập cũ.
+  - Tự động nạp `email`, `name`, `avatarUrl` và đăng nhập/tạo tài khoản trên TIKTUBE qua `AuthController.loginWithGoogle()`.
+
+---
+
 ## 4. GHI NHỚ MÔI TRƯỜNG MÁY CHỦ & CLIENT
 - **Hệ điều hành máy người dùng:** Windows.
 - **Lệnh PowerShell:** Dùng dấu `;` để nối chuỗi lệnh thay vì `&&`.
