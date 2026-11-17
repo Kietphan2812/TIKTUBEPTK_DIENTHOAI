@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import '../auth/auth_scope.dart';
 import '../data/api_client.dart';
 import '../data/tiktube_api.dart';
-import '../models/channel.dart';
 import '../models/video.dart';
 import '../theme/app_theme.dart';
 import '../widgets/channel_avatar.dart';
@@ -44,7 +43,12 @@ class ChannelScreen extends StatefulWidget {
 
 class _ChannelScreenState extends State<ChannelScreen>
     with SingleTickerProviderStateMixin {
-  late final TikTubeApi _api;
+  TikTubeApi? _apiInstance;
+  TikTubeApi get _api =>
+      widget.api ??
+      _apiInstance ??
+      AuthScope.maybeOf(context)?.api ??
+      ApiClient();
   late TabController _tabController;
 
   List<Video> _channelVideos = <Video>[];
@@ -56,7 +60,6 @@ class _ChannelScreenState extends State<ChannelScreen>
   @override
   void initState() {
     super.initState();
-    _api = widget.api ?? ApiClient();
     _tabController = TabController(length: 2, vsync: this);
     _subscriberCount = widget.subscriberCount;
     _subscribed = widget.subscribed;
@@ -64,6 +67,17 @@ class _ChannelScreenState extends State<ChannelScreen>
       _channelVideos = <Video>[widget.initialVideo!];
     }
     _loadChannelData();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_apiInstance == null) {
+      final authApi = AuthScope.maybeOf(context)?.api;
+      if (authApi != null) {
+        _apiInstance = authApi;
+      }
+    }
   }
 
   @override
@@ -79,41 +93,54 @@ class _ChannelScreenState extends State<ChannelScreen>
     });
 
     try {
-      final List<dynamic> results = await Future.wait<dynamic>(<Future<dynamic>>[
-        _api.fetchVideos(),
-        _api.fetchSubscriptions(),
-      ]);
-
-      final allVideos = results[0] as List<Video>;
-      final mySubscriptions = results[1] as List<Channel>;
-
-      final String targetName = widget.channelName.trim().toLowerCase();
-      final String targetId = widget.channelId.trim();
-
-      final matching = allVideos.where((v) {
-        final chName = v.channel.trim().toLowerCase();
-        final upName = v.uploadedBy.trim().toLowerCase();
-        final chId = v.channelId.trim();
-        return chName == targetName ||
-            upName == targetName ||
-            (targetId.isNotEmpty && chId == targetId);
-      }).toList();
-
-      if (widget.initialVideo != null &&
-          !matching.any((v) => v.id == widget.initialVideo!.id)) {
-        matching.insert(0, widget.initialVideo!);
+      // 1. Tải danh sách video của riêng kênh này trực tiếp từ server
+      List<Video> videos = <Video>[];
+      try {
+        videos = await _api.fetchVideos(
+          channelId: widget.channelId.isNotEmpty ? widget.channelId : null,
+          channel: widget.channelName.isNotEmpty ? widget.channelName : null,
+          limit: 100,
+        );
+      } catch (_) {
+        // Fallback tải danh sách chung rồi lọc
+        final all = await _api.fetchVideos(limit: 100);
+        final targetName = widget.channelName.trim().toLowerCase();
+        final targetId = widget.channelId.trim();
+        videos = all.where((v) {
+          final chName = v.channel.trim().toLowerCase();
+          final upName = v.uploadedBy.trim().toLowerCase();
+          final chId = v.channelId.trim();
+          return chName == targetName ||
+              upName == targetName ||
+              (targetId.isNotEmpty && chId == targetId);
+        }).toList();
       }
 
-      final isSub = mySubscriptions.any(
-        (c) =>
-            c.name.trim().toLowerCase() == targetName ||
-            (targetId.isNotEmpty && c.id == targetId),
-      );
+      if (widget.initialVideo != null &&
+          !videos.any((v) => v.id == widget.initialVideo!.id)) {
+        videos.insert(0, widget.initialVideo!);
+      }
+
+      // 2. Tải danh sách đăng ký kênh (bảo vệ graceful khi người dùng chưa đăng nhập)
+      bool isSub = widget.subscribed;
+      try {
+        final mySubscriptions = await _api.fetchSubscriptions();
+        final targetName = widget.channelName.trim().toLowerCase();
+        final targetId = widget.channelId.trim();
+        isSub = isSub ||
+            mySubscriptions.any(
+              (c) =>
+                  c.name.trim().toLowerCase() == targetName ||
+                  (targetId.isNotEmpty && c.id == targetId),
+            );
+      } catch (_) {
+        // Khách hoặc chưa đăng nhập -> không crash màn hình
+      }
 
       if (!mounted) return;
       setState(() {
-        _channelVideos = matching;
-        _subscribed = isSub || widget.subscribed;
+        _channelVideos = videos;
+        _subscribed = isSub;
         _loading = false;
       });
     } catch (e) {
@@ -126,6 +153,19 @@ class _ChannelScreenState extends State<ChannelScreen>
   }
 
   Future<void> _toggleSubscribe() async {
+    final auth = AuthScope.maybeOf(context);
+    if (auth != null && !auth.isAuthenticated) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Vui lòng đăng nhập để đăng ký kênh.'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      return;
+    }
+
     final next = !_subscribed;
     setState(() {
       _subscribed = next;

@@ -12,6 +12,7 @@ import '../data/tiktube_api.dart';
 import '../models/video.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_pill.dart';
+import '../utils/video_frame_capture.dart';
 import '../widgets/dashed_box.dart';
 import '../widgets/platform_video_controller.dart';
 import '../widgets/section_top_bar.dart';
@@ -46,8 +47,9 @@ class _UploadScreenState extends State<UploadScreen> {
   bool _kidsOnly = true;
   PlatformFile? _file;
   Uint8List? _bytes;
-  PlatformFile? _coverFile;
+  String? _coverFileName;
   Uint8List? _coverBytes;
+  Duration? _videoDuration;
   String? _existingThumbnailUrl;
   String? _existingVideoUrl;
   bool _uploading = false;
@@ -204,7 +206,7 @@ class _UploadScreenState extends State<UploadScreen> {
         return;
       }
       setState(() {
-        _coverFile = file;
+        _coverFileName = file.name;
         _coverBytes = bytes;
       });
       _notify('Đã chọn ảnh bìa: ${file.name}');
@@ -216,11 +218,29 @@ class _UploadScreenState extends State<UploadScreen> {
   void _removeCover() {
     if (_uploading) return;
     setState(() {
-      _coverFile = null;
+      _coverFileName = null;
       _coverBytes = null;
       _existingThumbnailUrl = null;
     });
     _notify('Đã gỡ ảnh bìa tùy chọn.');
+  }
+
+  void _onFrameCaptured(Uint8List bytes, Duration position) {
+    if (_uploading) return;
+    final int sec = position.inSeconds;
+    final String label =
+        '${sec ~/ 60}:${(sec % 60).toString().padLeft(2, '0')}';
+    setState(() {
+      _coverBytes = bytes;
+      _coverFileName = 'frame_${sec}s.jpg';
+    });
+    _notify('Đã lấy khung hình lúc $label làm ảnh bìa!');
+  }
+
+  void _onDurationDetermined(Duration duration) {
+    if (_videoDuration != duration) {
+      _videoDuration = duration;
+    }
   }
 
   Future<void> _submit() async {
@@ -240,7 +260,7 @@ class _UploadScreenState extends State<UploadScreen> {
           _notify('Đang tải ảnh bìa mới lên Cloudinary...');
           final uploadedUrl = await ChatService.instance.uploadImage(
             _coverBytes!,
-            _coverFile?.name ?? 'cover.jpg',
+            _coverFileName ?? 'cover.jpg',
           );
           if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
             newThumbUrl = uploadedUrl;
@@ -260,6 +280,7 @@ class _UploadScreenState extends State<UploadScreen> {
           tags: uploadTags,
           thumbnailUrl: newThumbUrl,
           isKidsOnly: _kidsOnly,
+          durationSeconds: _videoDuration?.inSeconds,
         );
         if (!mounted) return;
         _notify('Đã cập nhật video “${updated.title}” thành công!');
@@ -304,6 +325,7 @@ class _UploadScreenState extends State<UploadScreen> {
         kidsOnly: _kidsOnly,
         bytes: _bytes!,
         filename: _file!.name,
+        durationSeconds: _videoDuration?.inSeconds,
         onProgress: (double progress) {
           if (!mounted) return;
           setState(() {
@@ -312,12 +334,12 @@ class _UploadScreenState extends State<UploadScreen> {
         },
       );
 
-      // Nếu người dùng đã chọn ảnh bìa tùy chọn từ thiết bị
+      // Nếu người dùng đã chọn ảnh bìa tùy chọn từ thiết bị hoặc cắt từ video
       if (_coverBytes != null) {
         try {
           final customThumb = await ChatService.instance.uploadImage(
             _coverBytes!,
-            _coverFile?.name ?? 'cover.jpg',
+            _coverFileName ?? 'cover.jpg',
           );
           if (customThumb != null && customThumb.isNotEmpty) {
             video = await _api.updateVideo(
@@ -328,6 +350,7 @@ class _UploadScreenState extends State<UploadScreen> {
               tags: video.tags,
               thumbnailUrl: customThumb,
               isKidsOnly: video.isKidsOnly,
+              durationSeconds: _videoDuration?.inSeconds,
             );
           }
         } catch (_) {}
@@ -521,7 +544,7 @@ class _UploadScreenState extends State<UploadScreen> {
                               fileName: _file?.name,
                               fileSizeLabel: _fileSizeLabel,
                               coverBytes: _coverBytes,
-                              coverFileName: _coverFile?.name,
+                              coverFileName: _coverFileName,
                               existingThumbnailUrl: _existingThumbnailUrl,
                               existingVideoUrl: _existingVideoUrl,
                               uploading: _uploading,
@@ -546,12 +569,17 @@ class _UploadScreenState extends State<UploadScreen> {
                               onSubmit: _submit,
                               onCover: _pickCover,
                               onRemoveCover: _removeCover,
+                              onDurationDetermined: _onDurationDetermined,
+                              onCaptureFrame: _onFrameCaptured,
                             );
 
                             final Widget preview = _PhonePreview(
                               title: _title.text.trim(),
                               file: _file,
+                              videoUrl: isEditing ? _existingVideoUrl : null,
                               uploading: _uploading,
+                              onDurationDetermined: _onDurationDetermined,
+                              onCaptureFrame: _onFrameCaptured,
                             );
 
                             if (!wide) {
@@ -626,6 +654,8 @@ class _UploadForm extends StatelessWidget {
     required this.onSubmit,
     required this.onCover,
     required this.onRemoveCover,
+    this.onDurationDetermined,
+    this.onCaptureFrame,
   });
 
   final bool isEditing;
@@ -665,6 +695,8 @@ class _UploadForm extends StatelessWidget {
   final VoidCallback onSubmit;
   final VoidCallback onCover;
   final VoidCallback onRemoveCover;
+  final ValueChanged<Duration>? onDurationDetermined;
+  final void Function(Uint8List bytes, Duration position)? onCaptureFrame;
 
   @override
   Widget build(BuildContext context) {
@@ -778,12 +810,15 @@ class _UploadForm extends StatelessWidget {
               ),
             ),
           ),
-          if (compact) ...<Widget>[
+          if (compact || file != null || (isEditing && existingVideoUrl != null)) ...<Widget>[
             const SizedBox(height: 16),
             _MobileVideoPreview(
               title: titleController.text.trim(),
               file: file,
+              videoUrl: isEditing ? existingVideoUrl : null,
               uploading: uploading,
+              onDurationDetermined: onDurationDetermined,
+              onCaptureFrame: onCaptureFrame,
             ),
           ],
           const SizedBox(height: 20),
@@ -1441,18 +1476,25 @@ class _SuggestedHashtagChip extends StatelessWidget {
 class _MobileVideoPreview extends StatelessWidget {
   const _MobileVideoPreview({
     required this.title,
-    required this.file,
+    this.file,
+    this.videoUrl,
     required this.uploading,
+    this.onDurationDetermined,
+    this.onCaptureFrame,
   });
 
   final String title;
   final PlatformFile? file;
+  final String? videoUrl;
   final bool uploading;
+  final ValueChanged<Duration>? onDurationDetermined;
+  final void Function(Uint8List bytes, Duration position)? onCaptureFrame;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     final bool hasFile = file != null;
+    final bool hasMedia = hasFile || (videoUrl != null && videoUrl!.isNotEmpty);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1483,6 +1525,11 @@ class _MobileVideoPreview extends StatelessWidget {
                   textAlign: TextAlign.right,
                   style: TextStyle(fontSize: 10.5, color: p.textSecondary),
                 ),
+              )
+            else if (hasMedia)
+              Text(
+                'Video hiện tại',
+                style: TextStyle(fontSize: 10.5, color: p.textSecondary),
               ),
           ],
         ),
@@ -1504,8 +1551,14 @@ class _MobileVideoPreview extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: <Widget>[
-                  if (file != null)
-                    _VideoPreviewPlayer(file: file!, title: title)
+                  if (hasMedia)
+                    _VideoPreviewPlayer(
+                      file: file,
+                      videoUrl: videoUrl,
+                      title: title,
+                      onDurationDetermined: onDurationDetermined,
+                      onCaptureFrame: onCaptureFrame,
+                    )
                   else
                     const DecoratedBox(
                       decoration: BoxDecoration(
@@ -1543,7 +1596,7 @@ class _MobileVideoPreview extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (!hasFile)
+                  if (!hasMedia)
                     Center(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 22),
@@ -1589,6 +1642,33 @@ class _MobileVideoPreview extends StatelessWidget {
             ),
           ),
         ),
+        if (onCaptureFrame != null && hasMedia) ...<Widget>[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: p.brandRed.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: p.brandRed.withValues(alpha: 0.2)),
+            ),
+            child: Row(
+              children: <Widget>[
+                Icon(Icons.camera_alt_outlined, size: 15, color: p.brandRed),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Kéo thanh phát đến đoạn mong muốn, dừng lại và bấm “📸 Cắt ảnh” trên video để chọn làm ảnh bìa!',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: p.brandRed,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -1859,19 +1939,30 @@ class _AgeOption extends StatelessWidget {
 }
 
 class _VideoPreviewPlayer extends StatefulWidget {
-  const _VideoPreviewPlayer({required this.file, required this.title});
+  const _VideoPreviewPlayer({
+    this.file,
+    this.videoUrl,
+    required this.title,
+    this.onDurationDetermined,
+    this.onCaptureFrame,
+  });
 
-  final PlatformFile file;
+  final PlatformFile? file;
+  final String? videoUrl;
   final String title;
+  final ValueChanged<Duration>? onDurationDetermined;
+  final void Function(Uint8List bytes, Duration position)? onCaptureFrame;
 
   @override
   State<_VideoPreviewPlayer> createState() => _VideoPreviewPlayerState();
 }
 
 class _VideoPreviewPlayerState extends State<_VideoPreviewPlayer> {
+  final GlobalKey _repaintKey = GlobalKey();
   VideoPlayerController? _controller;
   Object? _error;
   bool _muted = kIsWeb;
+  bool _capturing = false;
   int _generation = 0;
 
   @override
@@ -1883,17 +1974,23 @@ class _VideoPreviewPlayerState extends State<_VideoPreviewPlayer> {
   @override
   void didUpdateWidget(covariant _VideoPreviewPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.file.uri != widget.file.uri ||
-        oldWidget.file.name != widget.file.name) {
+    if (oldWidget.file?.uri != widget.file?.uri ||
+        oldWidget.file?.name != widget.file?.name ||
+        oldWidget.videoUrl != widget.videoUrl) {
       _replace();
     }
   }
 
   Future<void> _open() async {
     final int generation = ++_generation;
-    final VideoPlayerController controller = createPlatformVideoController(
-      widget.file,
-    );
+    final VideoPlayerController controller;
+    if (widget.file != null) {
+      controller = createPlatformVideoController(widget.file!);
+    } else if (widget.videoUrl != null && widget.videoUrl!.isNotEmpty) {
+      controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl!));
+    } else {
+      return;
+    }
     _controller = controller;
     if (mounted) {
       setState(() => _error = null);
@@ -1904,6 +2001,7 @@ class _VideoPreviewPlayerState extends State<_VideoPreviewPlayer> {
         await controller.dispose();
         return;
       }
+      widget.onDurationDetermined?.call(controller.value.duration);
       await controller.setLooping(true);
       try {
         await controller.setVolume(_muted ? 0 : 1);
@@ -1961,6 +2059,30 @@ class _VideoPreviewPlayerState extends State<_VideoPreviewPlayer> {
     if (mounted) setState(() => _muted = muted);
   }
 
+  Future<void> _captureFrame() async {
+    final VideoPlayerController? controller = _controller;
+    if (controller == null || !controller.value.isInitialized || _capturing) return;
+
+    setState(() => _capturing = true);
+    try {
+      if (controller.value.isPlaying) {
+        await controller.pause();
+      }
+      final position = controller.value.position;
+      final bytes = await captureVideoFrame(
+        file: widget.file,
+        videoUrl: widget.videoUrl,
+        position: position,
+        repaintKey: _repaintKey,
+      );
+      if (bytes != null && bytes.isNotEmpty && mounted) {
+        widget.onCaptureFrame?.call(bytes, position);
+      }
+    } finally {
+      if (mounted) setState(() => _capturing = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
@@ -1992,6 +2114,10 @@ class _VideoPreviewPlayerState extends State<_VideoPreviewPlayer> {
           return _PreviewPlaybackError(title: widget.title);
         }
         final Size size = value.size;
+        final int posSec = value.position.inSeconds;
+        final String posLabel =
+            '${posSec ~/ 60}:${(posSec % 60).toString().padLeft(2, '0')}';
+
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => _togglePlay(),
@@ -1999,12 +2125,17 @@ class _VideoPreviewPlayerState extends State<_VideoPreviewPlayer> {
             fit: StackFit.expand,
             children: <Widget>[
               const ColoredBox(color: Colors.black),
-              FittedBox(
-                fit: BoxFit.contain,
-                child: SizedBox(
-                  width: size.width > 0 ? size.width : 16,
-                  height: size.height > 0 ? size.height : 9,
-                  child: VideoPlayer(controller),
+              RepaintBoundary(
+                key: _repaintKey,
+                child: SizedBox.expand(
+                  child: FittedBox(
+                    fit: BoxFit.contain,
+                    child: SizedBox(
+                      width: size.width > 0 ? size.width : 16,
+                      height: size.height > 0 ? size.height : 9,
+                      child: VideoPlayer(controller),
+                    ),
+                  ),
                 ),
               ),
               if (!value.isPlaying)
@@ -2027,6 +2158,7 @@ class _VideoPreviewPlayerState extends State<_VideoPreviewPlayer> {
                     ),
                   ),
                 ),
+              // Nút bật/tắt tiếng
               Positioned(
                 top: 7,
                 right: 7,
@@ -2053,6 +2185,67 @@ class _VideoPreviewPlayerState extends State<_VideoPreviewPlayer> {
                   ),
                 ),
               ),
+              // Nút cắt khung hình hiện tại làm ảnh bìa
+              if (widget.onCaptureFrame != null)
+                Positioned(
+                  top: 7,
+                  right: 40,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _capturing ? null : _captureFrame,
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: p.brandRed.withValues(alpha: 0.9),
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: const <BoxShadow>[
+                            BoxShadow(
+                              color: Colors.black45,
+                              blurRadius: 4,
+                              offset: Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            if (_capturing)
+                              const SizedBox(
+                                width: 11,
+                                height: 11,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.5,
+                                  color: Colors.white,
+                                ),
+                              )
+                            else
+                              const Icon(
+                                Icons.camera_alt_rounded,
+                                size: 12,
+                                color: Colors.white,
+                              ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _capturing
+                                  ? 'Đang cắt...'
+                                  : '📸 Cắt ảnh ($posLabel)',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               Positioned(
                 left: 0,
                 right: 0,
@@ -2137,18 +2330,25 @@ class _PreviewPlaybackError extends StatelessWidget {
 class _PhonePreview extends StatelessWidget {
   const _PhonePreview({
     required this.title,
-    required this.file,
+    this.file,
+    this.videoUrl,
     required this.uploading,
+    this.onDurationDetermined,
+    this.onCaptureFrame,
   });
 
   final String title;
   final PlatformFile? file;
+  final String? videoUrl;
   final bool uploading;
+  final ValueChanged<Duration>? onDurationDetermined;
+  final void Function(Uint8List bytes, Duration position)? onCaptureFrame;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     final bool hasFile = file != null;
+    final bool hasMedia = hasFile || (videoUrl != null && videoUrl!.isNotEmpty);
 
     return Container(
       width: 255,
@@ -2177,7 +2377,7 @@ class _PhonePreview extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 18),
-          if (!hasFile)
+          if (!hasMedia)
             Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -2209,7 +2409,13 @@ class _PhonePreview extends StatelessWidget {
                       child: Stack(
                         fit: StackFit.expand,
                         children: <Widget>[
-                          _VideoPreviewPlayer(file: file!, title: title),
+                          _VideoPreviewPlayer(
+                            file: file,
+                            videoUrl: videoUrl,
+                            title: title,
+                            onDurationDetermined: onDurationDetermined,
+                            onCaptureFrame: onCaptureFrame,
+                          ),
                           Positioned(
                             left: 8,
                             top: 8,
@@ -2255,44 +2461,15 @@ class _PhonePreview extends StatelessWidget {
                       const SizedBox(width: 8),
                       const Expanded(
                         child: Text(
-                          'kiepthan4',
+                          'TIKTUBE',
                           style: TextStyle(
                             color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),
-                      Icon(
-                        uploading
-                            ? Icons.cloud_upload_rounded
-                            : Icons.more_vert_rounded,
-                        color: Colors.white54,
-                        size: 16,
-                      ),
                     ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    title.isEmpty ? 'Tiêu đề video' : title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      height: 1.3,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    file!.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white54,
-                      fontSize: 9.5,
-                    ),
                   ),
                 ],
               ),

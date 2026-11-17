@@ -411,11 +411,13 @@ Handler createApi(
   router.get('/api/videos', (Request request) async {
     final params = request.url.queryParameters;
     final rawLimit = int.tryParse(params['limit'] ?? '') ?? 60;
-    final limit = rawLimit.clamp(1, 100);
+    final limit = rawLimit.clamp(1, 150);
     final userKey = await _optionalUserKey(db, request) ?? '';
     final videos = await db.listVideos(
       category: params['category'],
       query: params['q'],
+      channelId: params['channelId'] ?? params['channel_id'],
+      channel: params['channel'],
       limit: limit,
       userKey: userKey,
     );
@@ -487,6 +489,7 @@ Handler createApi(
     final filename = (params['filename'] ?? 'video.mp4').trim();
     final age = (params['age'] ?? 'kids').trim();
     final tags = _parseTags(params['tags']);
+    final clientDuration = int.tryParse(params['duration'] ?? '') ?? 0;
 
     _validateVideoFields(
       title: title,
@@ -507,7 +510,7 @@ Handler createApi(
     String videoUrl;
     String thumbnailUrl;
     String publicId;
-    int durationSeconds;
+    int durationSeconds = clientDuration;
     bool isGoogleDriveUpload = false;
 
     if (useGoogleDrive) {
@@ -516,11 +519,14 @@ Handler createApi(
         final gUpload = await googleDrive.uploadVideo(
           bytes: bytes,
           filename: filename.isEmpty ? 'video.mp4' : filename,
+          durationSeconds: clientDuration,
         );
         videoUrl = gUpload.videoUrl;
         thumbnailUrl = gUpload.thumbnailUrl;
         publicId = gUpload.fileId;
-        durationSeconds = gUpload.durationSeconds;
+        durationSeconds = gUpload.durationSeconds > 0
+            ? gUpload.durationSeconds
+            : clientDuration;
         isGoogleDriveUpload = true;
       } catch (driveError) {
         stderr.writeln('Google Drive upload thất bại: $driveError. Đang tự động fallback Cloudinary...');
@@ -533,7 +539,9 @@ Handler createApi(
         videoUrl = upload.secureUrl;
         thumbnailUrl = upload.thumbnailUrl;
         publicId = upload.publicId;
-        durationSeconds = upload.durationSeconds;
+        durationSeconds = upload.durationSeconds > 0
+            ? upload.durationSeconds
+            : clientDuration;
       }
     } else {
       final cloud = cloudinary;
@@ -547,7 +555,9 @@ Handler createApi(
       videoUrl = upload.secureUrl;
       thumbnailUrl = upload.thumbnailUrl;
       publicId = upload.publicId;
-      durationSeconds = upload.durationSeconds;
+      durationSeconds = upload.durationSeconds > 0
+          ? upload.durationSeconds
+          : clientDuration;
     }
 
     try {
@@ -684,6 +694,7 @@ Handler createApi(
     final tags = _parseTags(body['tags']);
     final thumbnailUrl = (body['thumbnailUrl'] as String?)?.trim();
     final isKidsOnly = body['isKidsOnly'] is bool ? body['isKidsOnly'] as bool : null;
+    final durationSeconds = int.tryParse(body['durationSeconds']?.toString() ?? body['duration']?.toString() ?? '');
 
     _validateVideoFields(
       title: title,
@@ -702,6 +713,7 @@ Handler createApi(
       tags: tags,
       thumbnailUrl: (thumbnailUrl != null && thumbnailUrl.isNotEmpty) ? thumbnailUrl : null,
       isKidsOnly: isKidsOnly,
+      durationSeconds: durationSeconds,
     );
     if (!updated) {
       throw ApiError(404, 'Không tìm thấy video hoặc bạn không có quyền sửa.');

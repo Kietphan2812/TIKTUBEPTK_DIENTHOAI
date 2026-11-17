@@ -333,6 +333,8 @@ limit @limit
   Future<List<Map<String, Object?>>> listVideos({
     String? category,
     String? query,
+    String? channelId,
+    String? channel,
     int limit = 60,
     String userKey = '',
   }) async {
@@ -346,6 +348,21 @@ limit @limit
     if (category != null && category.trim().isNotEmpty) {
       where.add('dm.ten_danh_muc = @category');
       params['category'] = category.trim();
+    }
+    if (channelId != null && channelId.trim().isNotEmpty) {
+      final cId = int.tryParse(channelId.trim());
+      if (cId != null) {
+        where.add('v.nguoi_dung_id = @channelId');
+        params['channelId'] = cId;
+      }
+    }
+    if (channel != null &&
+        channel.trim().isNotEmpty &&
+        (channelId == null || channelId.trim().isEmpty)) {
+      where.add(
+        '(u.ten_dang_nhap ilike @channel or coalesce(u.ten_hien_thi, \'\') ilike @channel)',
+      );
+      params['channel'] = channel.trim();
     }
     if (query != null && query.trim().isNotEmpty) {
       where.add('''
@@ -1744,6 +1761,7 @@ where kenh_id = @userId and nguoi_dung_id <> @userId
     required List<String> tags,
     String? thumbnailUrl,
     bool? isKidsOnly,
+    int? durationSeconds,
   }) async {
     final currentUserId = await _userIdForKey(userKey);
     final videoId = _intId(id);
@@ -1768,6 +1786,7 @@ set tieu_de = @title,
     danh_muc_id = @categoryId,
     duong_dan_anh_bia = coalesce(@thumbnailUrl, duong_dan_anh_bia),
     danh_cho_tre_em = coalesce(@isKidsOnly, danh_cho_tre_em),
+    thoi_luong = case when @duration::double precision > 0 then @duration::double precision else thoi_luong end,
     ngay_cap_nhat = now()
 where video_id = @videoId and nguoi_dung_id = @userId
 '''),
@@ -1779,6 +1798,9 @@ where video_id = @videoId and nguoi_dung_id = @userId
         'categoryId': categoryId,
         'thumbnailUrl': thumbnailUrl,
         'isKidsOnly': isKidsOnly,
+        'duration': (durationSeconds != null && durationSeconds > 0)
+            ? durationSeconds.toDouble()
+            : 0.0,
       },
     );
     return result.affectedRows > 0;

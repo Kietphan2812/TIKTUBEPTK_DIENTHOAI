@@ -20,7 +20,13 @@ import 'package:flutter_test/flutter_test.dart';
 /// API giả lập: luôn offline để test dùng dữ liệu mẫu, không gọi mạng.
 class _OfflineApi implements TikTubeApi {
   @override
-  Future<List<Video>> fetchVideos() async => kLatestVideos;
+  Future<List<Video>> fetchVideos({
+    String? category,
+    String? query,
+    String? channelId,
+    String? channel,
+    int? limit,
+  }) async => kLatestVideos;
 
   @override
   Future<RecommendedFeed> fetchForYouFeed({
@@ -99,6 +105,7 @@ class _OfflineApi implements TikTubeApi {
     required bool kidsOnly,
     required Uint8List bytes,
     required String filename,
+    int? durationSeconds,
     void Function(double progress)? onProgress,
   }) async => throw Exception('offline');
 
@@ -111,6 +118,7 @@ class _OfflineApi implements TikTubeApi {
     required List<String> tags,
     String? thumbnailUrl,
     bool? isKidsOnly,
+    int? durationSeconds,
   }) async => throw Exception('offline');
 
   @override
@@ -266,7 +274,13 @@ class _OfflineApi implements TikTubeApi {
 
 class _BrokenApi extends _OfflineApi {
   @override
-  Future<List<Video>> fetchVideos() async => throw Exception('offline');
+  Future<List<Video>> fetchVideos({
+    String? category,
+    String? query,
+    String? channelId,
+    String? channel,
+    int? limit,
+  }) async => throw Exception('offline');
 
   @override
   Future<RecommendedFeed> fetchForYouFeed({

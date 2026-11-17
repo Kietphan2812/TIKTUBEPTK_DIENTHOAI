@@ -14,7 +14,13 @@ import '../models/watch_history_item.dart';
 ///
 /// Có thể thay bằng bản giả lập trong test, hoặc `ApiClient` thật.
 abstract interface class TikTubeApi {
-  Future<List<Video>> fetchVideos();
+  Future<List<Video>> fetchVideos({
+    String? category,
+    String? query,
+    String? channelId,
+    String? channel,
+    int? limit,
+  });
 
   /// Feed cá nhân hóa từ lịch sử xem, like, bình luận, danh mục/hashtag và
   /// kênh đã đăng ký. Người chưa có lịch sử sẽ nhận tín hiệu xu hướng.
@@ -75,6 +81,7 @@ abstract interface class TikTubeApi {
     required bool kidsOnly,
     required Uint8List bytes,
     required String filename,
+    int? durationSeconds,
     void Function(double progress)? onProgress,
   });
 
@@ -86,6 +93,7 @@ abstract interface class TikTubeApi {
     required List<String> tags,
     String? thumbnailUrl,
     bool? isKidsOnly,
+    int? durationSeconds,
   });
 
   Future<void> deleteVideo(String videoId);

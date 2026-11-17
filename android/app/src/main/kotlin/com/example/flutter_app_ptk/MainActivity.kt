@@ -1,6 +1,8 @@
 package com.example.flutter_app_ptk
 
 import android.content.Intent
+import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
 import android.media.Ringtone
 import android.media.RingtoneManager
 import android.os.Build
@@ -9,6 +11,8 @@ import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.ByteArrayOutputStream
+import java.io.File
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.example.flutter_app_ptk/app_control"
@@ -85,6 +89,43 @@ class MainActivity : FlutterActivity() {
                             result.success(true)
                         } else {
                             result.error("INVALID_URL", "URL is null", null)
+                        }
+                    } catch (e: Exception) {
+                        result.error("ERROR", e.message, null)
+                    }
+                }
+                "getVideoFrame" -> {
+                    try {
+                        val path = call.argument<String>("path")
+                        val uriStr = call.argument<String>("uri")
+                        val urlStr = call.argument<String>("url")
+                        val timeMs = call.argument<Int>("timeMs") ?: 0
+                        val retriever = MediaMetadataRetriever()
+                        if (!path.isNullOrEmpty() && File(path).exists()) {
+                            retriever.setDataSource(path)
+                        } else if (!uriStr.isNullOrEmpty()) {
+                            retriever.setDataSource(applicationContext, android.net.Uri.parse(uriStr))
+                        } else if (!urlStr.isNullOrEmpty()) {
+                            retriever.setDataSource(urlStr, HashMap<String, String>())
+                        } else {
+                            result.error("INVALID_ARGS", "Path, URI or URL must be provided", null)
+                            return@setMethodCallHandler
+                        }
+                        val timeUs = timeMs.toLong() * 1000L
+                        val bitmap: Bitmap? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                            retriever.getScaledFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST, 1280, 720)
+                                ?: retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
+                        } else {
+                            retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
+                        }
+                        retriever.release()
+                        if (bitmap != null) {
+                            val stream = ByteArrayOutputStream()
+                            bitmap.compress(Bitmap.CompressFormat.JPEG, 85, stream)
+                            val byteArray = stream.toByteArray()
+                            result.success(byteArray)
+                        } else {
+                            result.error("FRAME_NULL", "Could not extract frame", null)
                         }
                     } catch (e: Exception) {
                         result.error("ERROR", e.message, null)

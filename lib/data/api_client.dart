@@ -62,8 +62,24 @@ class ApiClient implements TikTubeApi {
   }
 
   @override
-  Future<List<Video>> fetchVideos() async {
-    final data = await _request('GET', _uri('/api/videos', {'limit': '100'}));
+  Future<List<Video>> fetchVideos({
+    String? category,
+    String? query,
+    String? channelId,
+    String? channel,
+    int? limit,
+  }) async {
+    final queryParams = <String, String>{
+      'limit': (limit ?? 100).toString(),
+      if (category != null && category.trim().isNotEmpty)
+        'category': category.trim(),
+      if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
+      if (channelId != null && channelId.trim().isNotEmpty)
+        'channelId': channelId.trim(),
+      if (channel != null && channel.trim().isNotEmpty)
+        'channel': channel.trim(),
+    };
+    final data = await _request('GET', _uri('/api/videos', queryParams));
     return _videoList(data);
   }
 
@@ -211,6 +227,7 @@ class ApiClient implements TikTubeApi {
     required bool kidsOnly,
     required Uint8List bytes,
     required String filename,
+    int? durationSeconds,
     void Function(double progress)? onProgress,
   }) async {
     final uri = _uri('/api/videos/upload', <String, String>{
@@ -220,6 +237,8 @@ class ApiClient implements TikTubeApi {
       'tags': tags.join(','),
       'age': kidsOnly ? 'kids' : '18',
       'filename': filename,
+      if (durationSeconds != null && durationSeconds > 0)
+        'duration': durationSeconds.toString(),
     });
 
     // Dùng StreamedRequest thay vì bodyBytes để có thể báo tiến độ theo từng
@@ -283,6 +302,7 @@ class ApiClient implements TikTubeApi {
     required List<String> tags,
     String? thumbnailUrl,
     bool? isKidsOnly,
+    int? durationSeconds,
   }) async {
     final data = await _request(
       'PATCH',
@@ -294,6 +314,8 @@ class ApiClient implements TikTubeApi {
         'tags': tags,
         'thumbnailUrl': ?thumbnailUrl,
         'isKidsOnly': ?isKidsOnly,
+        if (durationSeconds != null && durationSeconds > 0)
+          'durationSeconds': durationSeconds,
       },
     );
     return Video.fromJson(data['video'] as Map<String, dynamic>);

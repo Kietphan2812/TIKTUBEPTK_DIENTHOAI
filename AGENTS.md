@@ -342,6 +342,23 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
 
 ---
 
+### 3.23. Cắt ảnh bìa từ Video khi Đăng/Sửa, Thời lượng Video Neon SQL & Sửa lỗi 401 Kênh
+- **Cắt ảnh từ video làm ảnh bìa (Frame Capture):**
+  - Thêm nút `[ 📸 Cắt ảnh ($posLabel) ]` ngay trên khung phát video xem trước trong [UploadScreen](file:///d:/flutter_app_ptk/lib/screens/upload_screen.dart) (cả khi đăng mới và chỉnh sửa video).
+  - Người dùng có thể tua/dừng ở bất kỳ giây nào và bấm "Cắt ảnh" để chụp lại khung hình hiện tại làm ảnh bìa thumbnail.
+  - Triển khai đa nền tảng:
+    - Android Native: Tích hợp qua MethodChannel `com.example.flutter_app_ptk/app_control` với hàm `getVideoFrame(path/url, timeUs)` sử dụng `MediaMetadataRetriever` (resize 1280x720, nén JPEG).
+    - Fallback / Web: [video_frame_capture_web.dart](file:///d:/flutter_app_ptk/lib/utils/video_frame_capture_web.dart) dùng HTML5 `<video>` vẽ lên `<canvas>` toDataURL, kết hợp [RenderRepaintBoundary](file:///d:/flutter_app_ptk/lib/utils/video_frame_capture_io.dart).
+  - Ảnh cắt ra được lưu tự động lên Cloudinary và lưu vào trường `hinh_thu_nho` trên Neon PostgreSQL khi bấm "Đăng video" / "Lưu thay đổi".
+- **Đồng bộ thời lượng (Duration) cho toàn bộ 100% video trên Neon PostgreSQL:**
+  - Đã truy vấn API Google Drive `videoMediaMetadata.durationMillis` và cập nhật chính xác thời lượng thực cho toàn bộ 17 video trước đó bị thiếu thời lượng (0 hoặc null) trong bảng `video` của Neon DB (ví dụ: `ông lão đánh cá au` -> 26s (`0:26`), `dancing` -> 7s (`0:07`), v.v.).
+  - Khi tải video mới lên, ứng dụng tự động lấy `duration` từ `VideoPlayerController` và lưu trực tiếp `durationSeconds` vào API backend để lưu vào Neon DB, đảm bảo không bao giờ bị thiếu thời lượng.
+- **Khắc phục lỗi 401 & Hiển thị toàn bộ video của Kênh ([ChannelScreen](file:///d:/flutter_app_ptk/lib/screens/channel_screen.dart)):**
+  - Sửa lỗi 401: Bọc try/catch cho lời gọi `_api.fetchSubscriptions()`, cho phép khách vãng lai (chưa đăng nhập) vào xem trang kênh mà không bị văng thông báo lỗi `ApiException(401): Bạn cần đăng nhập để tiếp tục.`.
+  - Lọc video chuẩn theo kênh: Bổ sung tham số `channelId` và `channel` vào endpoint `GET /api/videos` tại backend (`server/lib/api.dart` & `server/lib/db.dart`), giải quyết triệt để lỗi kênh chỉ hiển thị 1 video.
+
+---
+
 ## 4. GHI NHỚ MÔI TRƯỜNG MÁY CHỦ & CLIENT
 - **Hệ điều hành máy người dùng:** Windows.
 - **Lệnh PowerShell:** Dùng dấu `;` để nối chuỗi lệnh thay vì `&&`.

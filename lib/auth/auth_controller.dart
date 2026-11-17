@@ -26,6 +26,7 @@ class AuthController extends ChangeNotifier {
 
   AuthStatus get status => _status;
   Profile? get profile => _profile;
+  TikTubeApi get api => _api;
   bool get isAuthenticated =>
       _status == AuthStatus.authenticated && _profile != null;
   bool get isLoggedIn => isAuthenticated;
