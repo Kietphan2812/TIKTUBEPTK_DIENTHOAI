@@ -31,7 +31,7 @@ Future<Uint8List?> captureVideoFrame({
 
     ctx.drawImage(video, 0, 0, width.toDouble(), height.toDouble());
 
-    final dataUrl = canvas.toDataURL('image/jpeg', 0.85.toJS);
+    final dataUrl = canvas.toDataURL('image/jpeg', 0.95.toJS);
     final commaIndex = dataUrl.indexOf(',');
     if (commaIndex == -1) return null;
 

@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 import '../models/video.dart';
@@ -28,41 +30,55 @@ class VideoThumb extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: <Widget>[
-            if (thumbUrl != null)
+            if (thumbUrl != null) ...<Widget>[
+              // 1. Lớp nền mờ Ambient Cinema View: tạo dải màu lan tỏa theo tông của video
               Image.network(
                 thumbUrl,
                 fit: BoxFit.cover,
+                filterQuality: FilterQuality.low,
                 errorBuilder: (
                   BuildContext context,
                   Object error,
                   StackTrace? stackTrace,
                 ) =>
                     _Backdrop(colors: video.colors),
+              ),
+              BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                child: const ColoredBox(
+                  color: Color(0x73000000), // Lớp tối rạp chiếu phim 45%
+                ),
+              ),
+              // 2. Lớp ảnh chính sắc nét: giữ nguyên tỷ lệ khung hình thật, không bị zoom cắt xén 300% gây mờ
+              Image.network(
+                thumbUrl,
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.high,
+                errorBuilder: (
+                  BuildContext context,
+                  Object error,
+                  StackTrace? stackTrace,
+                ) =>
+                    const SizedBox.shrink(),
                 loadingBuilder: (
                   BuildContext context,
                   Widget child,
                   ImageChunkEvent? progress,
                 ) {
                   if (progress == null) return child;
-                  return Stack(
-                    fit: StackFit.expand,
-                    children: <Widget>[
-                      _Backdrop(colors: video.colors),
-                      const Center(
-                        child: SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 1.8,
-                            color: Colors.white70,
-                          ),
-                        ),
+                  return const Center(
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 1.8,
+                        color: Colors.white70,
                       ),
-                    ],
+                    ),
                   );
                 },
-              )
-            else
+              ),
+            ] else
               _Backdrop(colors: video.colors),
             if (thumbUrl != null)
               DecoratedBox(

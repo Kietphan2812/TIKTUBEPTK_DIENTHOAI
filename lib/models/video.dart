@@ -244,36 +244,44 @@ class Video {
 
   bool get isPlayable => (videoUrl ?? '').trim().isNotEmpty;
 
-  /// Ảnh thumbnail hiệu lực: ưu tiên ảnh bìa đã lưu (hoặc Google Drive thumbnail),
+  /// Ảnh thumbnail hiệu lực: ưu tiên ảnh bìa đã lưu (ảnh cắt từ video, Cloudinary, upload cá nhân),
   /// nếu chưa có hoặc là link Cloudinary hỏng chứa ID Google Drive thì tự động trích xuất
   /// ảnh thumbnail chất lượng cao từ Google Drive hoặc Cloudinary.
   String? get effectiveThumbnailUrl {
     final thumb = (thumbnailUrl ?? '').trim();
     final vUrl = (videoUrl ?? '').trim();
 
-    // 1. Kiểm tra nếu có Google Drive ID trong videoUrl hoặc thumbnailUrl
-    final driveIdMatch = RegExp(r'[?&]id=([a-zA-Z0-9_-]{25,})').firstMatch(vUrl) ??
-        RegExp(r'/([a-zA-Z0-9_-]{25,})\.jpg').firstMatch(thumb);
-    if (driveIdMatch != null) {
-      return 'https://lh3.googleusercontent.com/d/${driveIdMatch.group(1)}';
-    }
-    if (thumb.contains('lh3.googleusercontent.com/d/')) {
+    // 1. Ưu tiên hàng đầu: ảnh bìa thực tế đã lưu (Cloudinary, upload cá nhân hoặc URL hợp lệ)
+    if (thumb.isNotEmpty &&
+        !thumb.contains('/video/upload/so_2,w_640,h_360,c_fill/1') &&
+        !thumb.endsWith('.mp4') &&
+        !thumb.endsWith('.webm') &&
+        !thumb.endsWith('.mov') &&
+        !thumb.endsWith('.m3u8')) {
+      // Nếu là link Cloudinary video thumbnail, nâng cấp lên độ phân giải HD 1280x720 chất lượng cao nhất
+      if (thumb.contains('res.cloudinary.com') && thumb.contains('/video/upload/')) {
+        return thumb
+            .replaceAll(RegExp(r'w_\d+,h_\d+,c_fill'), 'w_1280,h_720,c_fill,q_auto:best')
+            .replaceFirst('/so_0,', '/so_2,');
+      }
       return thumb;
     }
 
-    // 2. Nếu có thumbnail hợp lệ (và không phải link Cloudinary giả chứa ID Drive)
-    if (thumb.isNotEmpty && !thumb.contains('/video/upload/so_2,w_640,h_360,c_fill/1')) {
-      return thumb;
-    }
-
-    // 3. Nếu video lưu trên Cloudinary, sinh ảnh tĩnh khung hình tại giây thứ 2
+    // 2. Nếu video lưu trên Cloudinary: sinh ảnh tĩnh khung hình HD 720p tại giây thứ 2
     if (vUrl.contains('res.cloudinary.com') && vUrl.contains('/video/upload/')) {
       return vUrl
           .replaceFirst(
             RegExp(r'\.(mp4|webm|mov|mkv|m4v)(\?.*)?$', caseSensitive: false),
             '.jpg',
           )
-          .replaceFirst('/video/upload/', '/video/upload/so_2,w_640,h_360,c_fill/');
+          .replaceFirst('/video/upload/', '/video/upload/so_2,w_1280,h_720,c_fill,q_auto:best/');
+    }
+
+    // 3. Dự phòng cho video Google Drive khi chưa có thumbnail riêng
+    final driveIdMatch = RegExp(r'[?&]id=([a-zA-Z0-9_-]{25,})').firstMatch(vUrl) ??
+        RegExp(r'/([a-zA-Z0-9_-]{25,})\.jpg').firstMatch(thumb);
+    if (driveIdMatch != null) {
+      return 'https://lh3.googleusercontent.com/d/${driveIdMatch.group(1)}';
     }
 
     if (thumb.isNotEmpty) return thumb;

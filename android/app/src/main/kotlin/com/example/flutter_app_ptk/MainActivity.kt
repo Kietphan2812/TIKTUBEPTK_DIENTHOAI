@@ -112,16 +112,12 @@ class MainActivity : FlutterActivity() {
                             return@setMethodCallHandler
                         }
                         val timeUs = timeMs.toLong() * 1000L
-                        val bitmap: Bitmap? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                            retriever.getScaledFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST, 1280, 720)
-                                ?: retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
-                        } else {
-                            retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
-                        }
+                        val bitmap: Bitmap? = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
+                            ?: retriever.frameAtTime
                         retriever.release()
                         if (bitmap != null) {
                             val stream = ByteArrayOutputStream()
-                            bitmap.compress(Bitmap.CompressFormat.JPEG, 85, stream)
+                            bitmap.compress(Bitmap.CompressFormat.JPEG, 95, stream)
                             val byteArray = stream.toByteArray()
                             result.success(byteArray)
                         } else {

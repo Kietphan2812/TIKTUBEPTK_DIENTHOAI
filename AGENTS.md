@@ -354,8 +354,20 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
   - Đã truy vấn API Google Drive `videoMediaMetadata.durationMillis` và cập nhật chính xác thời lượng thực cho toàn bộ 17 video trước đó bị thiếu thời lượng (0 hoặc null) trong bảng `video` của Neon DB (ví dụ: `ông lão đánh cá au` -> 26s (`0:26`), `dancing` -> 7s (`0:07`), v.v.).
   - Khi tải video mới lên, ứng dụng tự động lấy `duration` từ `VideoPlayerController` và lưu trực tiếp `durationSeconds` vào API backend để lưu vào Neon DB, đảm bảo không bao giờ bị thiếu thời lượng.
 - **Khắc phục lỗi 401 & Hiển thị toàn bộ video của Kênh ([ChannelScreen](file:///d:/flutter_app_ptk/lib/screens/channel_screen.dart)):**
-  - Sửa lỗi 401: Bọc try/catch cho lời gọi `_api.fetchSubscriptions()`, cho phép khách vãng lai (chưa đăng nhập) vào xem trang kênh mà không bị văng thông báo lỗi `ApiException(401): Bạn cần đăng nhập để tiếp tục.`.
+  - Sửa lỗi 401: Bọc try/catch cho lời loại `_api.fetchSubscriptions()`, cho phép khách vãng lai (chưa đăng nhập) vào xem trang kênh mà không bị văng thông báo lỗi `ApiException(401): Bạn cần đăng nhập để tiếp tục.`.
   - Lọc video chuẩn theo kênh: Bổ sung tham số `channelId` và `channel` vào endpoint `GET /api/videos` tại backend (`server/lib/api.dart` & `server/lib/db.dart`), giải quyết triệt để lỗi kênh chỉ hiển thị 1 video.
+
+---
+
+### 3.24. Nâng cấp Độ nét Ảnh bìa (Full-HD Clarity) & Giao diện Rạp chiếu phim Ambient Cinema
+- **Khắc phục triệt để tình trạng ảnh bìa bị mờ, vỡ hạt:**
+  - **Lỗi cũ:** Trước đây thẻ [VideoThumb](file:///d:/flutter_app_ptk/lib/widgets/video_thumb.dart) dùng `BoxFit.cover` trong khung `16:9`. Với các video dọc TikTok/Shorts (tỷ lệ 9:16), `BoxFit.cover` phóng to khung hình lên hơn 316% ($3.16\times$) và cắt bỏ 70% nội dung (bị mất phần trên/dưới, chỉ còn một góc nhỏ bị phóng to vỡ hạt). Đồng thời `Video.effectiveThumbnailUrl` trước đây ưu tiên trích xuất ID Google Drive từ `videoUrl` khiến các ảnh bìa HD tải lên Cloudinary hoặc ảnh cắt từ video bị bỏ qua và rơi về thumbnail 360p mặc định của Drive.
+  - **Thiết kế Ambient Cinema View chuẩn YouTube:**
+    - Lớp nền lan tỏa: Sử dụng ảnh bìa phủ toàn khung kết hợp `BackdropFilter(blur: 16x16)` và lớp tối rạp phim `Colors.black45`, tạo dải màu ambient hiện đại tự nhiên theo tông của video.
+    - Lớp ảnh chính: Sử dụng `BoxFit.contain` kết hợp `filterQuality: FilterQuality.high`. Toàn bộ video (dọc TikTok, ngang 16:9 hay vuông 1:1) đều hiển thị trọn vẹn 100% tỷ lệ gốc, hoàn toàn không bị zoom cắt xén 300% nên ảnh giữ nguyên độ nét gốc và sắc nét hơn gấp 3 lần.
+  - **Ưu tiên ảnh bìa HD chất lượng cao (`effectiveThumbnailUrl`):**
+    - Ưu tiên hàng đầu ảnh thumbnail thực tế (Cloudinary, ảnh chụp từ video). Nâng cấp link Cloudinary video thumbnail sang `w_1280,h_720,c_fill,q_auto:best`.
+    - Native Android (`MainActivity.kt`): `getVideoFrame` trích xuất khung hình ở độ phân giải gốc của video qua `MediaMetadataRetriever.OPTION_CLOSEST` và nén JPEG chất lượng 95%, đảm bảo ảnh cắt từ video có độ nét đạt chuẩn 1080p/720p hệt như đang xem video.
 
 ---
 
