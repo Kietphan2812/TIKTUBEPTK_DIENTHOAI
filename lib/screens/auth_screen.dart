@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../auth/auth_controller.dart';
 import '../data/tiktube_api.dart';
 import '../utils/google_auth_service.dart';
+import '../utils/gsi_button.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key, required this.controller});
@@ -38,6 +40,8 @@ class _AuthScreenState extends State<AuthScreen> {
   final TextEditingController _age = TextEditingController();
   final TextEditingController _phone = TextEditingController();
 
+  StreamSubscription<GoogleAuthResult>? _googleAuthSub;
+
   bool _register = false;
   bool _showPassword = false;
   bool _showConfirmPassword = false;
@@ -45,7 +49,16 @@ class _AuthScreenState extends State<AuthScreen> {
   String? _error;
 
   @override
+  void initState() {
+    super.initState();
+    GoogleAuthService.instance.ensureInitialized();
+    _googleAuthSub =
+        GoogleAuthService.instance.onUserSignedIn.listen(_onGoogleUserSignedIn);
+  }
+
+  @override
   void dispose() {
+    _googleAuthSub?.cancel();
     _login.dispose();
     _name.dispose();
     _username.dispose();
@@ -114,8 +127,8 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
-  Future<void> _handleGoogleSignIn() async {
-    if (_submitting) return;
+  Future<void> _onGoogleUserSignedIn(GoogleAuthResult result) async {
+    if (!mounted) return;
 
     setState(() {
       _submitting = true;
@@ -123,12 +136,6 @@ class _AuthScreenState extends State<AuthScreen> {
     });
 
     try {
-      final result = await GoogleAuthService.instance.signIn();
-      if (result == null) {
-        if (mounted) setState(() => _submitting = false);
-        return;
-      }
-
       await widget.controller.loginWithGoogle(
         email: result.email,
         name: result.name,
@@ -147,6 +154,32 @@ class _AuthScreenState extends State<AuthScreen> {
             duration: const Duration(seconds: 2),
           ),
         );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _error = _friendlyError(error));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = 'Đăng nhập Google thất bại: $e');
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _handleGoogleSignIn() async {
+    if (_submitting) return;
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+
+    try {
+      final result = await GoogleAuthService.instance.signIn();
+      if (result != null) {
+        await _onGoogleUserSignedIn(result);
+      } else {
+        if (mounted) setState(() => _submitting = false);
+      }
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() => _error = _friendlyError(error));
@@ -575,11 +608,19 @@ class _AuthScreenState extends State<AuthScreen> {
               ],
             ),
             const SizedBox(height: 14),
-            _GoogleAuthButton(
-              isRegister: _register,
-              loading: _submitting,
-              onTap: _handleGoogleSignIn,
-            ),
+            if (kIsWeb)
+              Center(
+                child: SizedBox(
+                  height: 46,
+                  child: buildGsiButton(isRegister: _register),
+                ),
+              )
+            else
+              _GoogleAuthButton(
+                isRegister: _register,
+                loading: _submitting,
+                onTap: _handleGoogleSignIn,
+              ),
             const SizedBox(height: 18),
             const Row(
               mainAxisAlignment: MainAxisAlignment.center,

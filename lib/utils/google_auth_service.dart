@@ -24,40 +24,69 @@ class GoogleAuthService {
       '767308821556-u8m4lou3li7a97avu47c9mkd5569lj4v.apps.googleusercontent.com';
 
   bool _initialized = false;
+  final StreamController<GoogleAuthResult> _authResultController =
+      StreamController<GoogleAuthResult>.broadcast();
 
-  Future<void> _ensureInitialized() async {
+  Stream<GoogleAuthResult> get onUserSignedIn => _authResultController.stream;
+
+  Future<void> ensureInitialized() async {
     if (_initialized) return;
     try {
       await GoogleSignIn.instance.initialize(
         clientId: kIsWeb ? googleClientId : null,
       );
       _initialized = true;
+
+      // Lắng nghe sự kiện đăng nhập từ Google Identity Services (trên Web & Mobile)
+      GoogleSignIn.instance.authenticationEvents.listen(
+        (event) {
+          if (event is GoogleSignInAuthenticationEventSignIn) {
+            final account = event.user;
+            final result = GoogleAuthResult(
+              email: account.email,
+              name: account.displayName ?? account.email.split('@').first,
+              avatarUrl: account.photoUrl,
+            );
+            _authResultController.add(result);
+          }
+        },
+        onError: (Object e) {
+          debugPrint('GoogleSignIn.authenticationEvents error: $e');
+        },
+      );
     } catch (e) {
       debugPrint('GoogleSignIn.initialize notice: $e');
     }
   }
 
   /// Kích hoạt đăng nhập Google thật:
-  /// - Mở cửa sổ "Chọn tài khoản" của Google (accounts.google.com)
-  /// - Người dùng chọn tài khoản Gmail thật của mình từ trình duyệt / thiết bị
-  /// - Nhận email, họ tên, ảnh đại diện từ Google
+  /// - Trên Mobile: gọi authenticate() mở native Google Account Chooser
+  /// - Trên Web: không gọi authenticate() mà hệ thống sử dụng nút GIS renderButton()
   Future<GoogleAuthResult?> signIn() async {
-    await _ensureInitialized();
+    await ensureInitialized();
 
-    try {
-      final GoogleSignInAccount account =
-          await GoogleSignIn.instance.authenticate(
-        scopeHint: const <String>['email', 'profile', 'openid'],
-      );
+    if (GoogleSignIn.instance.supportsAuthenticate()) {
+      try {
+        final GoogleSignInAccount account =
+            await GoogleSignIn.instance.authenticate(
+          scopeHint: const <String>['email', 'profile', 'openid'],
+        );
 
-      return GoogleAuthResult(
-        email: account.email,
-        name: account.displayName ?? account.email.split('@').first,
-        avatarUrl: account.photoUrl,
-      );
-    } catch (e) {
-      debugPrint('GoogleSignIn.authenticate error: $e');
-      rethrow;
+        final result = GoogleAuthResult(
+          email: account.email,
+          name: account.displayName ?? account.email.split('@').first,
+          avatarUrl: account.photoUrl,
+        );
+        _authResultController.add(result);
+        return result;
+      } catch (e) {
+        debugPrint('GoogleSignIn.authenticate error: $e');
+        rethrow;
+      }
+    } else {
+      // Trên Web, authenticate không được hỗ trợ theo quy chuẩn GIS.
+      // Người dùng tương tác trực tiếp với nút buildGsiButton() do GIS render.
+      return null;
     }
   }
 }
