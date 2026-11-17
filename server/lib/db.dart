@@ -1352,7 +1352,7 @@ select u.nguoi_dung_id, u.ten_dang_nhap,
 from nguoi_dung u
 join dang_ky_kenh dk on dk.nguoi_dung_id = u.nguoi_dung_id
 where dk.kenh_id = @currentUserId
-order by dk.ngay_tao desc, u.ten_dang_nhap
+order by dk.ngay_dang_ky desc, u.ten_dang_nhap
 '''),
       parameters: {'currentUserId': currentUserId},
     );

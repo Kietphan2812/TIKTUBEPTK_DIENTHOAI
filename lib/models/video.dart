@@ -244,12 +244,29 @@ class Video {
 
   bool get isPlayable => (videoUrl ?? '').trim().isNotEmpty;
 
-  /// Ảnh thumbnail hiệu lực: ưu tiên ảnh bìa đã lưu, nếu chưa có thì tự động
-  /// trích xuất khung hình 2 giây từ video Cloudinary, khắc phục tình trạng video không có nền.
+  /// Ảnh thumbnail hiệu lực: ưu tiên ảnh bìa đã lưu (hoặc Google Drive thumbnail),
+  /// nếu chưa có hoặc là link Cloudinary hỏng chứa ID Google Drive thì tự động trích xuất
+  /// ảnh thumbnail chất lượng cao từ Google Drive hoặc Cloudinary.
   String? get effectiveThumbnailUrl {
     final thumb = (thumbnailUrl ?? '').trim();
-    if (thumb.isNotEmpty) return thumb;
     final vUrl = (videoUrl ?? '').trim();
+
+    // 1. Kiểm tra nếu có Google Drive ID trong videoUrl hoặc thumbnailUrl
+    final driveIdMatch = RegExp(r'[?&]id=([a-zA-Z0-9_-]{25,})').firstMatch(vUrl) ??
+        RegExp(r'/([a-zA-Z0-9_-]{25,})\.jpg').firstMatch(thumb);
+    if (driveIdMatch != null) {
+      return 'https://lh3.googleusercontent.com/d/${driveIdMatch.group(1)}';
+    }
+    if (thumb.contains('lh3.googleusercontent.com/d/')) {
+      return thumb;
+    }
+
+    // 2. Nếu có thumbnail hợp lệ (và không phải link Cloudinary giả chứa ID Drive)
+    if (thumb.isNotEmpty && !thumb.contains('/video/upload/so_2,w_640,h_360,c_fill/1')) {
+      return thumb;
+    }
+
+    // 3. Nếu video lưu trên Cloudinary, sinh ảnh tĩnh khung hình tại giây thứ 2
     if (vUrl.contains('res.cloudinary.com') && vUrl.contains('/video/upload/')) {
       return vUrl
           .replaceFirst(
@@ -258,6 +275,8 @@ class Video {
           )
           .replaceFirst('/video/upload/', '/video/upload/so_2,w_640,h_360,c_fill/');
     }
+
+    if (thumb.isNotEmpty) return thumb;
     return null;
   }
 
