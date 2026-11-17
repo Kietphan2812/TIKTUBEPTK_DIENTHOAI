@@ -310,11 +310,13 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
 - **Cấu hình Google Cloud Console (Dự án `elegant-matrix-514123-i9`):**
   - Trạng thái công bố: **In production** (Sẵn sàng phục vụ mọi người dùng có tài khoản Google mà không bị giới hạn Test Users).
   - Web Client ID: `767308821556-4ofr0c7a66p78md3nrq1svn03i1u7q0a.apps.googleusercontent.com`.
+  - Android Keystore & SHA-1: Debug keystore `C:\Users\DELL\.android\debug.keystore`, Package name `com.example.flutter_app_ptk`, SHA-1: `59:26:6F:76:C9:0A:0B:A0:BB:7F:EE:C0:47:88:5C:C0:D8:4B:60:DB`.
   - Tích hợp GIS SDK: `<script src="https://accounts.google.com/gsi/client" async defer></script>` và thẻ `<meta name="google-signin-client_id" ...>` trong `web/index.html`.
 - **Dịch vụ `GoogleAuthService` (`lib/utils/google_auth_service.dart`):**
-  - Khởi tạo `GoogleSignIn.instance.initialize(clientId: kIsWeb ? googleClientId : null)`.
-  - Xác thực người dùng bằng `GoogleSignIn.instance.authenticate(scopeHint: ['email', 'profile', 'openid'])`.
-  - Hiển thị hộp thoại Google Account Chooser chính thức (`accounts.google.com`) liệt kê toàn bộ các tài khoản Google đã lưu trong trình duyệt hoặc thiết bị của người dùng (`tho2050py@gmail.com`, `kietphan12c2@gmail.com`, v.v.).
+  - Khởi tạo `GoogleSignIn.instance.initialize(clientId: kIsWeb ? googleClientId : null, serverClientId: googleClientId)`. Việc truyền `serverClientId: googleClientId` là bắt buộc trên Android để Google Play Services / Credential Manager hoạt động bình thường, khắc phục lỗi `serverClientId must be provided on Android`.
+  - Trên Web: Sử dụng widget Google Sign-In chính thức thông qua `buildGsiButton(...)` (renderButton) và lắng nghe sự kiện `authenticationEvents`.
+  - Trên Mobile / Desktop: Xác thực người dùng bằng `GoogleSignIn.instance.authenticate(scopeHint: ['email', 'profile', 'openid'])`.
+  - Hiển thị hộp thoại Google Account Chooser chính thức (`accounts.google.com`) liệt kê toàn bộ các tài khoản Google đã lưu trong trình duyệt hoặc thiết bị của người dùng.
   - Loại bỏ hoàn toàn bottom sheet giả lập cũ.
   - Tự động nạp `email`, `name`, `avatarUrl` và đăng nhập/tạo tài khoản trên TIKTUBE qua `AuthController.loginWithGoogle()`.
 

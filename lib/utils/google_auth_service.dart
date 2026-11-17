@@ -34,6 +34,7 @@ class GoogleAuthService {
     try {
       await GoogleSignIn.instance.initialize(
         clientId: kIsWeb ? googleClientId : null,
+        serverClientId: googleClientId,
       );
       _initialized = true;
 
