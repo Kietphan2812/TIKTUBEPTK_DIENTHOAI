@@ -2,12 +2,23 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "TIKTUBE (Chrome Web)",
+            "name": "TIKTUBE (Chrome Web - Cổng cố định 5000)",
             "request": "launch",
             "type": "dart",
             "deviceId": "chrome",
             "args": [
-                "--dart-define=API_BASE_URL=https://tiktube-api.onrender.com"
+                "--dart-define=API_BASE_URL=https://tiktube-api.onrender.com",
+                "--web-port=5000"
+            ]
+        },
+        {
+            "name": "TIKTUBE (Edge Web - Cổng cố định 5000)",
+            "request": "launch",
+            "type": "dart",
+            "deviceId": "edge",
+            "args": [
+                "--dart-define=API_BASE_URL=https://tiktube-api.onrender.com",
+                "--web-port=5000"
             ]
         },
         {
@@ -15,15 +26,6 @@
             "request": "launch",
             "type": "dart",
             "deviceId": "windows",
-            "args": [
-                "--dart-define=API_BASE_URL=https://tiktube-api.onrender.com"
-            ]
-        },
-        {
-            "name": "TIKTUBE (Edge Web)",
-            "request": "launch",
-            "type": "dart",
-            "deviceId": "edge",
             "args": [
                 "--dart-define=API_BASE_URL=https://tiktube-api.onrender.com"
             ]
