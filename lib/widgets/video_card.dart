@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/video.dart';
 import '../theme/app_theme.dart';
+import '../utils/video_downloader.dart';
 import 'channel_avatar.dart';
 import 'video_thumb.dart';
 
-/// Card video trong lưới "Video mới".
-///
-/// Trên điện thoại, [compact] dùng kiểu hàng ngang để danh sách gọn và dễ
-/// xem hơn; trên màn hình lớn vẫn giữ kiểu card dọc như cũ.
+/// Card video chuẩn phong cách YouTube:
+/// - Trên điện thoại ([compact] = true): thẻ tràn viền (16:9 full-width),
+///   ảnh đại diện kênh 38px, tiêu đề 2 dòng đậm, thời lượng góc dưới thumbnail,
+///   thông tin kênh & lượt xem và menu tùy chọn 3 chấm.
+/// - Trên màn hình lớn ([compact] = false): dạng lưới card bo góc hiện đại.
 class VideoCard extends StatefulWidget {
   const VideoCard({
     super.key,
@@ -28,6 +31,101 @@ class VideoCard extends StatefulWidget {
 class _VideoCardState extends State<VideoCard> {
   bool _hovered = false;
 
+  void _showVideoMenu(BuildContext context, Video video) {
+    final p = context.palette;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: p.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (BuildContext ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    margin: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      color: p.border,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                ListTile(
+                  leading: Icon(Icons.playlist_add_rounded, color: p.textPrimary),
+                  title: Text(
+                    'Lưu vào danh sách xem sau',
+                    style: TextStyle(color: p.textPrimary, fontSize: 14),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Đã thêm vào danh sách xem sau')),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.share_rounded, color: p.textPrimary),
+                  title: Text(
+                    'Chia sẻ liên kết',
+                    style: TextStyle(color: p.textPrimary, fontSize: 14),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    Clipboard.setData(
+                      ClipboardData(
+                        text: 'https://tiktube-api.onrender.com/watch?v=${video.id}',
+                      ),
+                    );
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Đã sao chép liên kết video')),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.download_rounded, color: p.textPrimary),
+                  title: Text(
+                    'Tải video xuống',
+                    style: TextStyle(color: p.textPrimary, fontSize: 14),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    VideoDownloader.downloadVideo(
+                      videoId: video.id,
+                      title: video.title,
+                      directUrl: video.videoUrl,
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.flag_outlined, color: p.textPrimary),
+                  title: Text(
+                    'Báo cáo vi phạm',
+                    style: TextStyle(color: p.textPrimary, fontSize: 14),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Cảm ơn bạn đã báo cáo. Chúng tôi sẽ xem xét.'),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
@@ -44,66 +142,83 @@ class _VideoCardState extends State<VideoCard> {
     );
   }
 
+  /// Giao diện thẻ video YouTube tràn viền trên Mobile.
   Widget _buildCompact(PtPalette p) {
-    return Row(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        SizedBox(
-          width: 136,
-          child: VideoThumb(
-            video: widget.video,
-            radius: 9,
-            showControls: false,
-          ),
+        // Video thumbnail (16:9 full-width)
+        VideoThumb(
+          video: widget.video,
+          radius: 0,
+          showControls: false,
         ),
-        const SizedBox(width: 11),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(top: 1),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  widget.video.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: p.textPrimary,
-                    height: 1.25,
+        // Thông tin kênh & Tiêu đề
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 6, 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              ChannelAvatar(video: widget.video, size: 38),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      widget.video.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w600,
+                        color: p.textPrimary,
+                        height: 1.25,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    _ChannelLine(
+                      video: widget.video,
+                      palette: p,
+                      compact: true,
+                    ),
+                  ],
+                ),
+              ),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _showVideoMenu(context, widget.video),
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 6, right: 4, top: 2),
+                  child: Icon(
+                    Icons.more_vert_rounded,
+                    size: 20,
+                    color: p.textSecondary,
                   ),
                 ),
-                const SizedBox(height: 3),
-                _ChannelLine(video: widget.video, palette: p, compact: true),
-                const SizedBox(height: 2),
-                Text(
-                  '${widget.video.viewsLabel} · ${widget.video.date}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 10.5, color: p.textSecondary),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ],
     );
   }
 
+  /// Giao diện thẻ video dạng lưới trên Desktop/Tablet.
   Widget _buildGrid(PtPalette p) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         AnimatedScale(
-          scale: _hovered ? 1.012 : 1,
+          scale: _hovered ? 1.015 : 1,
           duration: const Duration(milliseconds: 170),
           curve: Curves.easeOut,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 170),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(10),
               boxShadow: <BoxShadow>[
                 BoxShadow(
                   color: _hovered ? p.shadow : p.shadow.withValues(alpha: 0),
@@ -114,16 +229,17 @@ class _VideoCardState extends State<VideoCard> {
             ),
             child: VideoThumb(
               video: widget.video,
-              showControls: widget.video.isPlayable,
+              radius: 10,
+              showControls: false,
             ),
           ),
         ),
-        const SizedBox(height: 9),
+        const SizedBox(height: 10),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            ChannelAvatar(video: widget.video, size: 30),
-            const SizedBox(width: 8),
+            ChannelAvatar(video: widget.video, size: 34),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -133,22 +249,27 @@ class _VideoCardState extends State<VideoCard> {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: 13.5,
                       fontWeight: FontWeight.w600,
                       color: p.textPrimary,
                       height: 1.3,
                     ),
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 4),
                   _ChannelLine(video: widget.video, palette: p),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${widget.video.viewsLabel} · ${widget.video.date}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 10.5, color: p.textSecondary),
-                  ),
                 ],
+              ),
+            ),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _showVideoMenu(context, widget.video),
+              child: Padding(
+                padding: const EdgeInsets.only(left: 4, top: 2),
+                child: Icon(
+                  Icons.more_vert_rounded,
+                  size: 18,
+                  color: p.textSecondary,
+                ),
               ),
             ),
           ],
@@ -158,7 +279,7 @@ class _VideoCardState extends State<VideoCard> {
   }
 }
 
-/// Tên kênh kèm huy hiệu khi video thuộc kênh người dùng đã đăng ký.
+/// Tên kênh, lượt xem, thời gian đăng và huy hiệu khi đã đăng ký kênh.
 class _ChannelLine extends StatelessWidget {
   const _ChannelLine({
     required this.video,
@@ -176,14 +297,18 @@ class _ChannelLine extends StatelessWidget {
       children: <Widget>[
         Flexible(
           child: Text(
-            video.channel,
+            '${video.channel}  •  ${video.viewsLabel}  •  ${video.date}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 11.5, color: palette.textSecondary),
+            style: TextStyle(
+              fontSize: compact ? 12 : 11,
+              color: palette.textSecondary,
+              height: 1.2,
+            ),
           ),
         ),
         if (video.subscribed) ...<Widget>[
-          const SizedBox(width: 5),
+          const SizedBox(width: 6),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
             decoration: BoxDecoration(
@@ -195,14 +320,14 @@ class _ChannelLine extends StatelessWidget {
               children: <Widget>[
                 Icon(
                   Icons.check_circle_rounded,
-                  size: compact ? 9 : 10,
+                  size: compact ? 9.5 : 9,
                   color: palette.brandRed,
                 ),
                 const SizedBox(width: 2),
                 Text(
                   'Đã đăng ký',
                   style: TextStyle(
-                    fontSize: compact ? 8.5 : 9,
+                    fontSize: compact ? 8.5 : 8,
                     fontWeight: FontWeight.w700,
                     color: palette.brandRed,
                   ),

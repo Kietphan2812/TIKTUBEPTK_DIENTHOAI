@@ -9,3 +9,4 @@ void triggerWebDownload(String url, String filename) {
   anchor.click();
   anchor.remove();
 }
+

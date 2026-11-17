@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/chat_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
+import '../auth/auth_scope.dart';
 import 'logo.dart';
 
 class TopBar extends StatelessWidget {
@@ -382,6 +383,8 @@ class _MobileAccountButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+    final profile = AuthScope.maybeOf(context)?.profile;
+    final avatarUrl = profile?.avatarUrl?.trim();
 
     return _HoverSurface(
       onTap: onTap,
@@ -393,11 +396,25 @@ class _MobileAccountButton extends StatelessWidget {
         shape: BoxShape.circle,
         border: Border.all(color: p.border),
       ),
-      child: Icon(
-        Icons.person_outline_rounded,
-        size: 18,
-        color: p.textSecondary,
-      ),
+      child: (avatarUrl != null && avatarUrl.isNotEmpty)
+          ? ClipOval(
+              child: Image.network(
+                avatarUrl,
+                width: 34,
+                height: 34,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => Icon(
+                  Icons.person_outline_rounded,
+                  size: 18,
+                  color: p.textSecondary,
+                ),
+              ),
+            )
+          : Icon(
+              Icons.person_outline_rounded,
+              size: 18,
+              color: p.textSecondary,
+            ),
     );
   }
 }

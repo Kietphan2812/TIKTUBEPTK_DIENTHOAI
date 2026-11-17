@@ -481,7 +481,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               child: LayoutBuilder(
                 builder: (BuildContext context, BoxConstraints constraints) {
                   final bool compact = constraints.maxWidth < 700;
-                  final double pad = compact ? 12 : 20;
+                  final double pad = compact ? 0 : 20;
                   final double contentWidth = constraints.maxWidth - pad * 2;
                   final int columns = compact
                       ? 1
@@ -526,51 +526,56 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           (_loadingTrending ||
                               _trendingError != null ||
                               trending.isNotEmpty)) ...<Widget>[
-                        SizedBox(height: compact ? 14 : 18),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: <Widget>[
-                            Expanded(
-                              child: _SectionTitle(
-                                title: 'Video xu hướng',
-                                subtitle: 'Điểm xu hướng · 7 ngày',
-                                compact: compact,
+                        SizedBox(height: compact ? 10 : 18),
+                        Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: compact ? 12 : 0,
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: <Widget>[
+                              Expanded(
+                                child: _SectionTitle(
+                                  title: 'Video xu hướng',
+                                  subtitle: 'Điểm xu hướng · 7 ngày',
+                                  compact: compact,
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            Tooltip(
-                              message: 'Xem tất cả video xu hướng',
-                              child: TextButton(
-                                onPressed: _openTrending,
-                                style: TextButton.styleFrom(
-                                  foregroundColor: p.brandRed,
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: compact ? 6 : 10,
-                                    vertical: 6,
+                              const SizedBox(width: 8),
+                              Tooltip(
+                                message: 'Xem tất cả video xu hướng',
+                                child: TextButton(
+                                  onPressed: _openTrending,
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: p.brandRed,
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: compact ? 6 : 10,
+                                      vertical: 6,
+                                    ),
+                                    minimumSize: Size.zero,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
                                   ),
-                                  minimumSize: Size.zero,
-                                  tapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: <Widget>[
-                                    Text(
-                                      compact ? 'Xem bảng' : 'Xem tất cả',
-                                      style: TextStyle(
-                                        fontSize: compact ? 11 : 12,
-                                        fontWeight: FontWeight.w700,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: <Widget>[
+                                      Text(
+                                        compact ? 'Xem bảng' : 'Xem tất cả',
+                                        style: TextStyle(
+                                          fontSize: compact ? 11 : 12,
+                                          fontWeight: FontWeight.w700,
+                                        ),
                                       ),
-                                    ),
-                                    Icon(
-                                      Icons.chevron_right_rounded,
-                                      size: compact ? 16 : 18,
-                                    ),
-                                  ],
+                                      Icon(
+                                        Icons.chevron_right_rounded,
+                                        size: compact ? 16 : 18,
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                         SizedBox(height: compact ? 10 : 12),
                         if (trending.isNotEmpty)
@@ -579,6 +584,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             child: HorizontalDragScroll(
                               child: ListView.separated(
                                 scrollDirection: Axis.horizontal,
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: compact ? 12 : 0,
+                                ),
                                 itemCount: trending.length,
                                 separatorBuilder: (
                                   BuildContext context,
@@ -625,57 +633,70 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         },
                       ),
                       if (!_searching) ...<Widget>[
-                        SizedBox(height: compact ? 12 : 14),
-                        if (compact)
-                          MobileSegmentedTabs(
-                            labels: const <String>['Dành cho bạn', 'Mới nhất'],
-                            selectedIndex: _forYou ? 0 : 1,
-                            onChanged: (int index) => _selectForYou(index == 0),
-                          )
-                        else
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: <Widget>[
-                              AppTabPill(
-                                label: 'DÀNH CHO BẠN',
-                                selected: _forYou,
-                                onTap: () => _selectForYou(true),
-                              ),
-                              AppTabPill(
-                                label: 'MỚI NHẤT',
-                                selected: !_forYou,
-                                onTap: () => _selectForYou(false),
-                              ),
-                            ],
+                        SizedBox(height: compact ? 10 : 14),
+                        Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: compact ? 12 : 0,
                           ),
+                          child: compact
+                              ? MobileSegmentedTabs(
+                                  labels: const <String>[
+                                    'Dành cho bạn',
+                                    'Mới nhất',
+                                  ],
+                                  selectedIndex: _forYou ? 0 : 1,
+                                  onChanged: (int index) =>
+                                      _selectForYou(index == 0),
+                                )
+                              : Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: <Widget>[
+                                    AppTabPill(
+                                      label: 'DÀNH CHO BẠN',
+                                      selected: _forYou,
+                                      onTap: () => _selectForYou(true),
+                                    ),
+                                    AppTabPill(
+                                      label: 'MỚI NHẤT',
+                                      selected: !_forYou,
+                                      onTap: () => _selectForYou(false),
+                                    ),
+                                  ],
+                                ),
+                        ),
                       ],
-                      SizedBox(height: compact ? 14 : 18),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: <Widget>[
-                          Expanded(
-                            child: _SectionTitle(
-                              title: _searching
-                                  ? 'Kết quả cho “${_query.trim()}”'
-                                  : showingForYou
-                                  ? 'Dành cho bạn'
-                                  : 'Video mới',
-                              subtitle: _searching
-                                  ? '${videos.length} video phù hợp'
-                                  : _forYouSubtitle,
-                              compact: compact,
+                      SizedBox(height: compact ? 12 : 18),
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: compact ? 12 : 0,
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: <Widget>[
+                            Expanded(
+                              child: _SectionTitle(
+                                title: _searching
+                                    ? 'Kết quả cho “${_query.trim()}”'
+                                    : showingForYou
+                                    ? 'Dành cho bạn'
+                                    : 'Video mới',
+                                subtitle: _searching
+                                    ? '${videos.length} video phù hợp'
+                                    : _forYouSubtitle,
+                                compact: compact,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 10),
-                          _SourceBadge(
-                            loading: showingForYou
-                                ? _loadingRecommended
-                                : _loadingVideos,
-                            online: activeOnline,
-                            onTap: retryActive,
-                          ),
-                        ],
+                            const SizedBox(width: 10),
+                            _SourceBadge(
+                              loading: showingForYou
+                                  ? _loadingRecommended
+                                  : _loadingVideos,
+                              online: activeOnline,
+                              onTap: retryActive,
+                            ),
+                          ],
+                        ),
                       ),
                       SizedBox(height: compact ? 10 : 14),
                       if (activeLoading)
@@ -684,17 +705,36 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         DataError(message: activeError, onRetry: retryActive)
                       else if (videos.isEmpty)
                         _EmptyState(onReset: _resetFilters)
+                      else if (compact)
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            for (int i = 0; i < videos.length; i++) ...<Widget>[
+                              VideoCard(
+                                video: videos[i],
+                                compact: true,
+                                onTap: () => unawaited(_openVideo(videos[i])),
+                              ),
+                              if (i < videos.length - 1)
+                                Container(
+                                  height: 1,
+                                  margin: const EdgeInsets.only(bottom: 4),
+                                  color: p.border.withValues(alpha: 0.5),
+                                ),
+                            ],
+                          ],
+                        )
                       else
                         Wrap(
                           spacing: gap,
-                          runSpacing: compact ? 14 : 22,
+                          runSpacing: 22,
                           children: <Widget>[
                             for (final Video video in videos)
                               SizedBox(
                                 width: cardWidth,
                                 child: VideoCard(
                                   video: video,
-                                  compact: compact,
+                                  compact: false,
                                   onTap: () => unawaited(_openVideo(video)),
                                 ),
                               ),
@@ -933,13 +973,13 @@ class _MobileSearchBar extends StatelessWidget {
     final bool hasText = controller.text.trim().isNotEmpty;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 2),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
       child: Container(
-        height: 42,
+        height: 40,
         decoration: BoxDecoration(
-          color: p.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: p.border),
+          color: p.chip,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: p.border.withValues(alpha: 0.55)),
         ),
         child: Row(
           children: <Widget>[

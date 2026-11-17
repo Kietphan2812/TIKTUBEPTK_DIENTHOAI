@@ -94,9 +94,66 @@ class VideoThumb extends StatelessWidget {
                 right: 0,
                 bottom: 0,
                 child: _ControlBar(video: video, big: big),
+              )
+            else if (!video.isLive)
+              Positioned(
+                right: big ? 10 : 8,
+                bottom: big ? 10 : 8,
+                child: _DurationBadge(video: video, big: big),
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _DurationBadge extends StatelessWidget {
+  const _DurationBadge({required this.video, required this.big});
+
+  final Video video;
+  final bool big;
+
+  @override
+  Widget build(BuildContext context) {
+    final titleLower = video.title.toLowerCase();
+    final bool isMusic = video.category == 'Âm nhạc' ||
+        video.category == 'Âm nhạc & sáng tạo' ||
+        titleLower.contains('remix') ||
+        titleLower.contains('lofi') ||
+        titleLower.contains('bxh');
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: big ? 7 : 6,
+        vertical: big ? 3 : 2.5,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          if (isMusic) ...<Widget>[
+            Icon(
+              Icons.music_note_rounded,
+              size: big ? 12 : 11,
+              color: Colors.white,
+            ),
+            const SizedBox(width: 2.5),
+          ],
+          Text(
+            video.durationLabel,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: big ? 12 : 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.2,
+              height: 1.15,
+            ),
+          ),
+        ],
       ),
     );
   }

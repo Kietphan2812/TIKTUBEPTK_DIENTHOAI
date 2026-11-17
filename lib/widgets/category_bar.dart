@@ -23,6 +23,7 @@ class CategoryBar extends StatelessWidget {
       child: HorizontalDragScroll(
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
+          padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 0),
           itemCount: kCategories.length,
           separatorBuilder: (BuildContext context, int index) =>
               SizedBox(width: compact ? 6 : 8),
