@@ -2,8 +2,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
-/// Dịch vụ truyền tải âm thanh & giọng nói trực tiếp qua giao thức WebRTC (P2P Live Audio)
-/// Sử dụng cụm STUN Server của Google để kết nối trực tiếp micro và loa giữa 2 thiết bị.
+/// Dịch vụ truyền tải âm thanh & hình ảnh trực tiếp qua giao thức WebRTC (P2P Live Audio & Video)
+/// Sử dụng cụm STUN Server của Google để kết nối trực tiếp camera, micro và loa giữa 2 thiết bị.
 class WebRtcService {
   WebRtcService._();
   static final WebRtcService instance = WebRtcService._();
@@ -11,6 +11,17 @@ class WebRtcService {
   RTCPeerConnection? _peerConnection;
   MediaStream? _localStream;
   MediaStream? _remoteStream;
+
+  /// Renderers hiển thị video trên giao diện
+  final RTCVideoRenderer localRenderer = RTCVideoRenderer();
+  final RTCVideoRenderer remoteRenderer = RTCVideoRenderer();
+  bool _renderersInitialized = false;
+
+  bool isLocalVideoReady = false;
+  bool isRemoteVideoReady = false;
+
+  /// Callback khi có thay đổi trạng thái luồng video/âm thanh
+  VoidCallback? onStreamUpdate;
 
   /// Callback khi sinh ra ứng viên mạng ICE Candidate mới
   Function(Map<String, dynamic> candidate)? onIceCandidateGenerated;
@@ -27,30 +38,68 @@ class WebRtcService {
     'sdpSemantics': 'unified-plan',
   };
 
-  static const Map<String, dynamic> _mediaConstraints = {
-    'audio': true,
-    'video': false,
-  };
+  /// Khởi tạo các bộ giải mã hiển thị video
+  Future<void> initRenderers() async {
+    if (!_renderersInitialized) {
+      await localRenderer.initialize();
+      await remoteRenderer.initialize();
+      _renderersInitialized = true;
+    }
+  }
 
-  /// Khởi tạo cuộc gọi từ phía người gọi (Caller): Lấy microphone, tạo SDP Offer kèm Google STUN
-  Future<Map<String, dynamic>?> createOffer() async {
+  Map<String, dynamic> _getMediaConstraints({required bool isVideo}) {
+    return <String, dynamic>{
+      'audio': true,
+      'video': isVideo
+          ? <String, dynamic>{
+              'mandatory': <String, dynamic>{
+                'minWidth': '640',
+                'minHeight': '480',
+                'minFrameRate': '30',
+              },
+              'facingMode': 'user',
+              'optional': <dynamic>[],
+            }
+          : false,
+    };
+  }
+
+  /// Khởi tạo cuộc gọi từ phía người gọi (Caller): Mở mic & camera, tạo SDP Offer kèm Google STUN
+  Future<Map<String, dynamic>?> createOffer({bool isVideo = false}) async {
     try {
+      await initRenderers();
       await disposeCall();
 
       _peerConnection = await createPeerConnection(_iceServers);
 
-      // Thu âm micro của máy thực tế
-      _localStream = await navigator.mediaDevices.getUserMedia(_mediaConstraints);
-      for (final track in _localStream!.getAudioTracks()) {
+      // Thu luồng micro và camera thực tế từ thiết bị
+      final constraints = _getMediaConstraints(isVideo: isVideo);
+      _localStream = await navigator.mediaDevices.getUserMedia(constraints);
+      localRenderer.srcObject = _localStream;
+      isLocalVideoReady = isVideo && _localStream!.getVideoTracks().isNotEmpty;
+      onStreamUpdate?.call();
+
+      for (final track in _localStream!.getTracks()) {
         await _peerConnection!.addTrack(track, _localStream!);
       }
 
-      // Nhận luồng âm thanh từ micro đối phương và phát trực tiếp ra loa
+      // Nhận luồng âm thanh và video từ đối phương
       _peerConnection!.onTrack = (RTCTrackEvent event) {
-        if (event.track.kind == 'audio') {
-          debugPrint('[WebRTC] Đã kết nối luồng âm thanh đàm thoại từ đối phương!');
-          _remoteStream = event.streams.isNotEmpty ? event.streams[0] : null;
+        debugPrint('[WebRTC] Nhận track: kind=${event.track.kind}, streams=${event.streams.length}');
+        if (event.streams.isNotEmpty) {
+          _remoteStream = event.streams[0];
+          remoteRenderer.srcObject = _remoteStream;
+          isRemoteVideoReady = _remoteStream!.getVideoTracks().isNotEmpty;
+          onStreamUpdate?.call();
         }
+      };
+
+      _peerConnection!.onAddStream = (MediaStream stream) {
+        debugPrint('[WebRTC] Nhận onAddStream: id=${stream.id}');
+        _remoteStream = stream;
+        remoteRenderer.srcObject = _remoteStream;
+        isRemoteVideoReady = stream.getVideoTracks().isNotEmpty;
+        onStreamUpdate?.call();
       };
 
       _peerConnection!.onIceCandidate = (RTCIceCandidate candidate) {
@@ -73,11 +122,11 @@ class WebRtcService {
 
       final offer = await _peerConnection!.createOffer({
         'offerToReceiveAudio': 1,
-        'offerToReceiveVideo': 0,
+        'offerToReceiveVideo': isVideo ? 1 : 0,
       });
       await _peerConnection!.setLocalDescription(offer);
 
-      // Chờ tối đa 1.5 giây để gom toàn bộ ứng viên STUN Google vào SDP (Vanilla ICE)
+      // Chờ tối đa 1.5 giây để gom ứng viên STUN Google vào SDP (Vanilla ICE)
       await iceCompleter.future.timeout(
         const Duration(milliseconds: 1500),
         onTimeout: () {},
@@ -94,30 +143,50 @@ class WebRtcService {
         'type': finalOffer.type,
       };
     } catch (e) {
-      debugPrint('[WebRTC] Lỗi tạo Offer âm thanh: $e');
+      debugPrint('[WebRTC] Lỗi tạo Offer: $e');
       return null;
     }
   }
 
-  /// Phía người nhận (Receiver) trả lời: Nạp Offer, mở microphone, tạo SDP Answer
-  Future<Map<String, dynamic>?> createAnswer(Map<String, dynamic> offerMap) async {
+  /// Phía người nhận (Receiver) trả lời: Nạp Offer, mở micro & camera, tạo SDP Answer
+  Future<Map<String, dynamic>?> createAnswer(
+    Map<String, dynamic> offerMap, {
+    bool isVideo = false,
+  }) async {
     try {
+      await initRenderers();
       await disposeCall();
 
       _peerConnection = await createPeerConnection(_iceServers);
 
-      // Mở micro của máy người nhận
-      _localStream = await navigator.mediaDevices.getUserMedia(_mediaConstraints);
-      for (final track in _localStream!.getAudioTracks()) {
+      // Mở micro & camera của máy người nhận
+      final constraints = _getMediaConstraints(isVideo: isVideo);
+      _localStream = await navigator.mediaDevices.getUserMedia(constraints);
+      localRenderer.srcObject = _localStream;
+      isLocalVideoReady = isVideo && _localStream!.getVideoTracks().isNotEmpty;
+      onStreamUpdate?.call();
+
+      for (final track in _localStream!.getTracks()) {
         await _peerConnection!.addTrack(track, _localStream!);
       }
 
-      // Nhận luồng âm thanh từ máy người gọi
+      // Nhận luồng âm thanh và video từ máy người gọi
       _peerConnection!.onTrack = (RTCTrackEvent event) {
-        if (event.track.kind == 'audio') {
-          debugPrint('[WebRTC] Đã kết nối luồng âm thanh đàm thoại từ đối phương!');
-          _remoteStream = event.streams.isNotEmpty ? event.streams[0] : null;
+        debugPrint('[WebRTC] Nhận track: kind=${event.track.kind}, streams=${event.streams.length}');
+        if (event.streams.isNotEmpty) {
+          _remoteStream = event.streams[0];
+          remoteRenderer.srcObject = _remoteStream;
+          isRemoteVideoReady = _remoteStream!.getVideoTracks().isNotEmpty;
+          onStreamUpdate?.call();
         }
+      };
+
+      _peerConnection!.onAddStream = (MediaStream stream) {
+        debugPrint('[WebRTC] Nhận onAddStream: id=${stream.id}');
+        _remoteStream = stream;
+        remoteRenderer.srcObject = _remoteStream;
+        isRemoteVideoReady = stream.getVideoTracks().isNotEmpty;
+        onStreamUpdate?.call();
       };
 
       _peerConnection!.onIceCandidate = (RTCIceCandidate candidate) {
@@ -148,7 +217,7 @@ class WebRtcService {
 
       final answer = await _peerConnection!.createAnswer({
         'offerToReceiveAudio': 1,
-        'offerToReceiveVideo': 0,
+        'offerToReceiveVideo': isVideo ? 1 : 0,
       });
       await _peerConnection!.setLocalDescription(answer);
 
@@ -168,7 +237,7 @@ class WebRtcService {
         'type': finalAnswer.type,
       };
     } catch (e) {
-      debugPrint('[WebRTC] Lỗi tạo Answer âm thanh: $e');
+      debugPrint('[WebRTC] Lỗi tạo Answer: $e');
       return null;
     }
   }
@@ -211,12 +280,44 @@ class WebRtcService {
     }
   }
 
+  /// Đổi giữa Camera trước và sau
+  Future<void> switchCamera() async {
+    try {
+      final videoTracks = _localStream?.getVideoTracks();
+      if (videoTracks != null && videoTracks.isNotEmpty) {
+        await Helper.switchCamera(videoTracks.first);
+        onStreamUpdate?.call();
+      }
+    } catch (e) {
+      debugPrint('[WebRTC] Lỗi switchCamera: $e');
+    }
+  }
+
+  /// Bật / Tắt Camera của máy
+  void setCameraEnabled(bool enabled) {
+    try {
+      final videoTracks = _localStream?.getVideoTracks();
+      if (videoTracks != null) {
+        for (final track in videoTracks) {
+          track.enabled = enabled;
+        }
+        isLocalVideoReady = enabled;
+        onStreamUpdate?.call();
+      }
+    } catch (e) {
+      debugPrint('[WebRTC] Lỗi setCameraEnabled: $e');
+    }
+  }
+
   /// Bật / Tắt Micro của máy
   void setMicrophoneMute(bool muted) {
     try {
-      _localStream?.getAudioTracks().forEach((track) {
-        track.enabled = !muted;
-      });
+      final audioTracks = _localStream?.getAudioTracks();
+      if (audioTracks != null) {
+        for (final track in audioTracks) {
+          track.enabled = !muted;
+        }
+      }
       debugPrint('[WebRTC] Micro: ${muted ? "Đã tắt" : "Đã bật"}');
     } catch (e) {
       debugPrint('[WebRTC] Lỗi setMicrophoneMute: $e');
@@ -237,6 +338,9 @@ class WebRtcService {
   Future<void> disposeCall() async {
     try {
       onIceCandidateGenerated = null;
+      isLocalVideoReady = false;
+      isRemoteVideoReady = false;
+
       _localStream?.getTracks().forEach((track) {
         track.stop();
       });
@@ -249,6 +353,9 @@ class WebRtcService {
       await _remoteStream?.dispose();
       _remoteStream = null;
 
+      localRenderer.srcObject = null;
+      remoteRenderer.srcObject = null;
+
       await _peerConnection?.close();
       await _peerConnection?.dispose();
       _peerConnection = null;
@@ -258,4 +365,3 @@ class WebRtcService {
     }
   }
 }
-

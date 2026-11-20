@@ -371,6 +371,23 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
 
 ---
 
+### 3.25. Truyền hình ảnh Video & Âm thanh 2 chiều trực tiếp qua WebRTC P2P (Live Video Calling)
+- **Khắc phục lỗi chỉ có âm thanh, không có hình ảnh:**
+  - **Nguyên nhân:** Trước đây trong [lib/services/webrtc_service.dart](file:///d:/flutter_app_ptk/lib/services/webrtc_service.dart), cấu hình media bị khoá cứng `video: false` và `offerToReceiveVideo: 0`. Đồng thời trong [lib/widgets/call_overlay.dart](file:///d:/flutter_app_ptk/lib/widgets/call_overlay.dart), ứng dụng khởi tạo `CameraController` (plugin `camera`) cho xem trước cục bộ làm khoá cứng phần cứng Camera2 trên Android, khiến WebRTC không thể can thiệp luồng hình ảnh. Ngoài ra khung hình người nhận góc phải (PIP) trước đây chỉ là một `CircleAvatar` tĩnh kèm chữ "HD Audio".
+  - **Giải pháp toàn diện:**
+    - Loại bỏ hoàn toàn `CameraController` độc lập, uỷ quyền toàn bộ việc thu hình ảnh cho bộ giải mã WebRTC bản địa (`navigator.mediaDevices.getUserMedia(video: true)`).
+    - Tích hợp 2 bộ render video WebRTC: `localRenderer` (hiển thị camera máy hiện tại) và `remoteRenderer` (hiển thị luồng video nhận về từ đối phương).
+    - Cấu hình SDP Offer & Answer thương lượng cả Audio (1) và Video (1) qua cụm máy chủ STUN của Google.
+    - Lắng nghe cả sự kiện `onTrack` và `onAddStream` đảm bảo bắt trọn luồng hình ảnh từ mọi thiết bị.
+  - **Giao diện Cuộc gọi Video 2 chiều hoàn chỉnh:**
+    - Khung toàn màn hình: Hiển thị trực tiếp luồng video của đối phương bằng `RTCVideoView(remoteRenderer, objectFit: RTCVideoViewObjectFitCover)`. Nếu đối phương chưa bật camera hoặc chưa kết nối xong, hiển thị avatar dạng sóng âm lan toả kèm trạng thái chờ.
+    - Cửa sổ nhỏ góc trên (Picture-in-Picture - PIP): Hiển thị camera của bản thân bằng `RTCVideoView(localRenderer, mirror: true)`.
+    - Chạm vào khung PIP để hoán đổi góc nhìn (Swap view): chuyển camera của mình ra nền chính và đưa đối phương vào ô nhỏ.
+    - Nút đổi Camera: Gọi `WebRtcService.instance.switchCamera()` để lật nhanh giữa camera trước và camera sau.
+    - Nút bật/tắt Camera: Gọi `WebRtcService.instance.setCameraEnabled(!_isCameraOff)` để đóng/mở track video tức thì.
+
+---
+
 ## 4. GHI NHỚ MÔI TRƯỜNG MÁY CHỦ & CLIENT
 - **Hệ điều hành máy người dùng:** Windows.
 - **Lệnh PowerShell:** Dùng dấu `;` để nối chuỗi lệnh thay vì `&&`.

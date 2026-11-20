@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../data/chat_service.dart';
 import '../models/chat_contact.dart';
@@ -76,13 +76,7 @@ class _CallOverlayState extends State<CallOverlay>
   bool _isMuted = false;
   bool _isCameraOff = false;
   bool _isSpeakerOn = true;
-
-  // Quản lý Camera thiết bị thật
-  CameraController? _cameraController;
-  List<CameraDescription> _availableCameras = <CameraDescription>[];
-  bool _isCameraInitialized = false;
-  bool _isSwitchingCamera = false;
-  int _selectedCameraIndex = 0;
+  bool _isSwappedView = false;
 
   @override
   void initState() {
@@ -95,6 +89,11 @@ class _CallOverlayState extends State<CallOverlay>
     _pulseAnimation = Tween<double>(begin: 1.0, end: 1.25).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
+
+    // Lắng nghe cập nhật luồng WebRTC để vẽ lại giao diện
+    WebRtcService.instance.onStreamUpdate = () {
+      if (mounted) setState(() {});
+    };
 
     if (widget.isIncoming && !_connected) {
       unawaited(CallManager.instance.startRingtone());
@@ -111,9 +110,6 @@ class _CallOverlayState extends State<CallOverlay>
         _callTimer?.cancel();
         if (!_connected) {
           setState(() => _connected = true);
-          if (widget.isVideo && !_isCameraInitialized) {
-            unawaited(_initCamera());
-          }
           final answer = event['data']?['answer'] is Map
               ? Map<String, dynamic>.from(event['data']['answer'] as Map)
               : null;
@@ -145,65 +141,6 @@ class _CallOverlayState extends State<CallOverlay>
         _hangup();
       }
     });
-
-    if (widget.isVideo && !widget.isIncoming) {
-      unawaited(_initCamera());
-    }
-  }
-
-  Future<void> _initCamera() async {
-    try {
-      _availableCameras = await availableCameras();
-      if (_availableCameras.isEmpty) return;
-
-      int frontIndex = _availableCameras.indexWhere(
-        (c) => c.lensDirection == CameraLensDirection.front,
-      );
-      _selectedCameraIndex = (frontIndex != -1) ? frontIndex : 0;
-      await _setupCameraController(_availableCameras[_selectedCameraIndex]);
-    } catch (e) {
-      debugPrint('[CallOverlay] Lỗi khởi tạo camera: $e');
-    }
-  }
-
-  Future<void> _setupCameraController(CameraDescription camera) async {
-    final prevController = _cameraController;
-    final controller = CameraController(
-      camera,
-      ResolutionPreset.medium,
-      enableAudio: true,
-      imageFormatGroup: ImageFormatGroup.jpeg,
-    );
-
-    try {
-      await controller.initialize();
-      if (!mounted) {
-        await controller.dispose();
-        return;
-      }
-      setState(() {
-        _cameraController = controller;
-        _isCameraInitialized = true;
-      });
-      await prevController?.dispose();
-    } catch (e) {
-      debugPrint('[CallOverlay] Lỗi setup camera controller: $e');
-      await controller.dispose();
-    }
-  }
-
-  Future<void> _switchCamera() async {
-    if (_availableCameras.length < 2 || _isSwitchingCamera) return;
-    setState(() => _isSwitchingCamera = true);
-    try {
-      _selectedCameraIndex =
-          (_selectedCameraIndex + 1) % _availableCameras.length;
-      await _setupCameraController(_availableCameras[_selectedCameraIndex]);
-    } finally {
-      if (mounted) {
-        setState(() => _isSwitchingCamera = false);
-      }
-    }
   }
 
   Future<void> _setupWebRtcCaller() async {
@@ -211,7 +148,7 @@ class _CallOverlayState extends State<CallOverlay>
       ChatService.instance.sendIceCandidate(widget.friend.id, candidate);
     };
 
-    final offer = await WebRtcService.instance.createOffer();
+    final offer = await WebRtcService.instance.createOffer(isVideo: widget.isVideo);
     if (!mounted) return;
 
     ChatService.instance.initiateCall(
@@ -251,17 +188,17 @@ class _CallOverlayState extends State<CallOverlay>
 
     Map<String, dynamic>? answer;
     if (widget.offer != null) {
-      answer = await WebRtcService.instance.createAnswer(widget.offer!);
+      answer = await WebRtcService.instance.createAnswer(
+        widget.offer!,
+        isVideo: widget.isVideo,
+      );
     } else {
-      answer = await WebRtcService.instance.createOffer();
+      answer = await WebRtcService.instance.createOffer(isVideo: widget.isVideo);
     }
 
     if (!mounted) return;
     ChatService.instance.answerCall(widget.friend.id, answer: answer);
     setState(() => _connected = true);
-    if (widget.isVideo && !_isCameraInitialized) {
-      unawaited(_initCamera());
-    }
     _startTimer();
   }
 
@@ -269,6 +206,7 @@ class _CallOverlayState extends State<CallOverlay>
     unawaited(CallManager.instance.stopRingtone());
     _callTimer?.cancel();
     _callEventsSub?.cancel();
+    WebRtcService.instance.onStreamUpdate = null;
     unawaited(WebRtcService.instance.disposeCall());
     ChatService.instance.endCall(
       widget.friend.id,
@@ -284,7 +222,7 @@ class _CallOverlayState extends State<CallOverlay>
     _pulseController.dispose();
     _callTimer?.cancel();
     _callEventsSub?.cancel();
-    _cameraController?.dispose();
+    WebRtcService.instance.onStreamUpdate = null;
     unawaited(WebRtcService.instance.disposeCall());
     super.dispose();
   }
@@ -297,15 +235,15 @@ class _CallOverlayState extends State<CallOverlay>
 
   @override
   Widget build(BuildContext context) {
-    final isVideo = widget.isVideo && !_isCameraOff;
+    final isVideoMode = widget.isVideo && _connected;
 
     return Material(
       color: Colors.transparent,
       child: Stack(
         fit: StackFit.expand,
         children: <Widget>[
-          // Nền cuộc gọi: Luồng Camera thực tế hoặc gradient thoại mượt mà
-          if (isVideo && _connected)
+          // Nền cuộc gọi: Luồng Video thực tế 2 chiều hoặc gradient thoại
+          if (isVideoMode)
             _buildVideoBackground()
           else
             _buildAudioBackground(),
@@ -351,11 +289,13 @@ class _CallOverlayState extends State<CallOverlay>
                 ),
                 const SizedBox(height: 8),
 
-                // Trạng thái mic / camera thực tế
+                // Trạng thái mic / loa thực tế
                 if (_connected)
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 4),
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.black45,
                       borderRadius: BorderRadius.circular(20),
@@ -393,8 +333,8 @@ class _CallOverlayState extends State<CallOverlay>
 
                 const Spacer(),
 
-                // Avatar với hiệu ứng sóng âm (Pulse Ring) nếu không phải video
-                if (!isVideo || !_connected)
+                // Avatar với hiệu ứng sóng âm (Pulse Ring) nếu là gọi thoại hoặc đang chờ kết nối
+                if (!widget.isVideo || !_connected)
                   AnimatedBuilder(
                     animation: _pulseAnimation,
                     builder: (context, child) {
@@ -472,57 +412,38 @@ class _CallOverlayState extends State<CallOverlay>
     );
   }
 
+  /// Giao diện truyền hình ảnh trực tiếp 2 chiều WebRTC
   Widget _buildVideoBackground() {
+    final webrtc = WebRtcService.instance;
+    final isRemoteAvailable = webrtc.isRemoteVideoReady;
+    final isLocalAvailable = webrtc.isLocalVideoReady && !_isCameraOff;
+
+    final showRemoteAsMain = !_isSwappedView;
+
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
-        // Luồng Camera thực tế của thiết bị
-        if (_cameraController != null &&
-            _isCameraInitialized &&
-            !_isCameraOff)
-          ClipRect(
-            child: OverflowBox(
-              alignment: Alignment.center,
-              child: FittedBox(
-                fit: BoxFit.cover,
-                child: SizedBox(
-                  width: _cameraController!.value.previewSize?.height ?? 1,
-                  height: _cameraController!.value.previewSize?.width ?? 1,
-                  child: CameraPreview(_cameraController!),
-                ),
-              ),
-            ),
-          )
-        else
-          Container(
-            color: const Color(0xFF0F172A),
-            alignment: Alignment.center,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Icon(
-                  _isCameraOff
-                      ? Icons.videocam_off_rounded
-                      : Icons.camera_enhance_rounded,
-                  size: 64,
-                  color: Colors.white38,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  _isCameraOff
-                      ? 'Camera đã tắt'
-                      : 'Đang kết nối camera thiết bị...',
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
+        // 1. Luồng video chính toàn màn hình
+        if (showRemoteAsMain) ...[
+          if (isRemoteAvailable)
+            RTCVideoView(
+              webrtc.remoteRenderer,
+              objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+            )
+          else
+            _buildWaitingRemoteVideoView()
+        ] else ...[
+          if (isLocalAvailable)
+            RTCVideoView(
+              webrtc.localRenderer,
+              mirror: true,
+              objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+            )
+          else
+            _buildCameraOffPlaceholder()
+        ],
 
-        // Lớp gradient mỏng để thông tin và các nút luôn sắc nét
+        // Lớp gradient mỏng để bảo đảm chữ và nút điều khiển luôn rõ nét
         Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -539,33 +460,115 @@ class _CallOverlayState extends State<CallOverlay>
           ),
         ),
 
-        // Khung hình thu nhỏ của người nhận (Góc trên bên phải)
+        // 2. Khung hình thu nhỏ góc trên bên phải (PIP - Chạm để hoán đổi góc nhìn)
         Positioned(
           top: 60,
           right: 20,
-          child: Container(
-            width: 110,
-            height: 155,
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E293B).withValues(alpha: 0.9),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: const Color(0xFFFF2D45).withValues(alpha: 0.8),
-                width: 2,
-              ),
-              boxShadow: const [
-                BoxShadow(
-                  color: Colors.black45,
-                  blurRadius: 10,
-                  offset: Offset(0, 4),
+          child: GestureDetector(
+            onTap: () {
+              setState(() => _isSwappedView = !_isSwappedView);
+            },
+            child: Container(
+              width: 110,
+              height: 155,
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: const Color(0xFFFF2D45).withValues(alpha: 0.85),
+                  width: 2,
                 ),
-              ],
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black45,
+                    blurRadius: 10,
+                    offset: Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: <Widget>[
+                    if (!showRemoteAsMain) ...[
+                      if (isRemoteAvailable)
+                        RTCVideoView(
+                          webrtc.remoteRenderer,
+                          objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                        )
+                      else
+                        _buildPipAvatar(widget.friend.name, 'Đối phương')
+                    ] else ...[
+                      if (isLocalAvailable)
+                        RTCVideoView(
+                          webrtc.localRenderer,
+                          mirror: true,
+                          objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                        )
+                      else
+                        _buildPipCameraOff()
+                    ],
+
+                    // Nhãn chỉ dẫn nhỏ
+                    Positioned(
+                      bottom: 4,
+                      left: 4,
+                      right: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          showRemoteAsMain ? 'Bạn (Chạm đổi)' : widget.friend.name,
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                CircleAvatar(
-                  radius: 26,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWaitingRemoteVideoView() {
+    return Container(
+      color: const Color(0xFF0F172A),
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          AnimatedBuilder(
+            animation: _pulseAnimation,
+            builder: (context, child) {
+              return Container(
+                width: 90 * _pulseAnimation.value,
+                height: 90 * _pulseAnimation.value,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFFFF2D45).withValues(
+                    alpha: (1.3 - _pulseAnimation.value).clamp(0.0, 0.4),
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: CircleAvatar(
+                  radius: 36,
                   backgroundColor: const Color(0xFFFF2D45),
                   child: Text(
                     widget.friend.name.isNotEmpty
@@ -573,47 +576,109 @@ class _CallOverlayState extends State<CallOverlay>
                         : '?',
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 22,
+                      fontSize: 32,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: Text(
-                    widget.friend.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Icon(Icons.mic, size: 12, color: Color(0xFF4CAF50)),
-                    SizedBox(width: 4),
-                    Text(
-                      'HD Audio',
-                      style: TextStyle(
-                        color: Color(0xFF4CAF50),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Đang kết nối video với ${widget.friend.name}...',
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
             ),
           ),
-        ),
-      ],
+          const SizedBox(height: 6),
+          const Text(
+            'Đang truyền tải hình ảnh HD qua WebRTC',
+            style: TextStyle(
+              color: Color(0xFF4CAF50),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCameraOffPlaceholder() {
+    return Container(
+      color: const Color(0xFF0F172A),
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: const <Widget>[
+          Icon(Icons.videocam_off_rounded, size: 64, color: Colors.white38),
+          SizedBox(height: 12),
+          Text(
+            'Camera của bạn đã tắt',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPipAvatar(String name, String label) {
+    return Container(
+      color: const Color(0xFF1E293B),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          CircleAvatar(
+            radius: 24,
+            backgroundColor: const Color(0xFFFF2D45),
+            child: Text(
+              name.isNotEmpty ? name[0].toUpperCase() : '?',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPipCameraOff() {
+    return Container(
+      color: const Color(0xFF1E293B),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: const <Widget>[
+          Icon(Icons.videocam_off_rounded, size: 32, color: Colors.white54),
+          SizedBox(height: 6),
+          Text(
+            'Cam tắt',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -636,7 +701,7 @@ class _CallOverlayState extends State<CallOverlay>
             },
           ),
 
-          // Nút Camera (nếu là video call)
+          // Nút Bật/Tắt Camera (nếu là video call)
           if (widget.isVideo)
             _CircleButton(
               icon: _isCameraOff
@@ -644,16 +709,24 @@ class _CallOverlayState extends State<CallOverlay>
                   : Icons.videocam_rounded,
               label: _isCameraOff ? 'Bật cam' : 'Tắt cam',
               active: _isCameraOff,
-              onTap: () => setState(() => _isCameraOff = !_isCameraOff),
+              onTap: () {
+                setState(() {
+                  _isCameraOff = !_isCameraOff;
+                  WebRtcService.instance.setCameraEnabled(!_isCameraOff);
+                });
+              },
             ),
 
-          // Nút Đổi Camera trước / sau (nếu máy có từ 2 camera)
-          if (widget.isVideo && _availableCameras.length > 1)
+          // Nút Đổi Camera trước / sau (nếu là video call)
+          if (widget.isVideo)
             _CircleButton(
               icon: Icons.flip_camera_ios_rounded,
               label: 'Đổi cam',
               active: false,
-              onTap: _switchCamera,
+              onTap: () async {
+                await WebRtcService.instance.switchCamera();
+                if (mounted) setState(() {});
+              },
             ),
 
           // Nút Loa ngoài
