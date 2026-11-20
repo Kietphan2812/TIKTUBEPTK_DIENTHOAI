@@ -372,13 +372,17 @@ Sau khi hoàn thành bất kỳ tính năng, chỉnh sửa giao diện hay sửa
 ---
 
 ### 3.25. Truyền hình ảnh Video & Âm thanh 2 chiều trực tiếp qua WebRTC P2P (Live Video Calling)
-- **Khắc phục lỗi chỉ có âm thanh, không có hình ảnh:**
-  - **Nguyên nhân:** Trước đây trong [lib/services/webrtc_service.dart](file:///d:/flutter_app_ptk/lib/services/webrtc_service.dart), cấu hình media bị khoá cứng `video: false` và `offerToReceiveVideo: 0`. Đồng thời trong [lib/widgets/call_overlay.dart](file:///d:/flutter_app_ptk/lib/widgets/call_overlay.dart), ứng dụng khởi tạo `CameraController` (plugin `camera`) cho xem trước cục bộ làm khoá cứng phần cứng Camera2 trên Android, khiến WebRTC không thể can thiệp luồng hình ảnh. Ngoài ra khung hình người nhận góc phải (PIP) trước đây chỉ là một `CircleAvatar` tĩnh kèm chữ "HD Audio".
+- **Khắc phục lỗi chỉ có âm thanh, không có hình ảnh ("Cam tắt"):**
+  - **Nguyên nhân cốt lõi:**
+    1. Cấu hình MediaConstraints cũ dùng cú pháp lỗi thời `'mandatory': {'minWidth': '640'}` dạng String gây biệt lệ kiểu dữ liệu trên Android WebRTC, khiến `getUserMedia` bị bắt lỗi và rơi về null.
+    2. Thiếu cơ chế xin cấp quyền Camera & Audio runtime của Android lúc bắt đầu cuộc gọi, dẫn đến quyền phần cứng bị từ chối ngầm.
+    3. Trên `ChatScreen`, khi nhận sự kiện `call:incoming`, lời gọi `CallOverlay.startCall` chưa truyền `offer` dẫn đến người nhận tự sinh Offer thay vì sinh Answer.
+    4. Ứng viên mạng ICE Candidates tới trước khi `setRemoteDescription` hoàn tất bị từ chối.
   - **Giải pháp toàn diện:**
-    - Loại bỏ hoàn toàn `CameraController` độc lập, uỷ quyền toàn bộ việc thu hình ảnh cho bộ giải mã WebRTC bản địa (`navigator.mediaDevices.getUserMedia(video: true)`).
-    - Tích hợp 2 bộ render video WebRTC: `localRenderer` (hiển thị camera máy hiện tại) và `remoteRenderer` (hiển thị luồng video nhận về từ đối phương).
-    - Cấu hình SDP Offer & Answer thương lượng cả Audio (1) và Video (1) qua cụm máy chủ STUN của Google.
-    - Lắng nghe cả sự kiện `onTrack` và `onAddStream` đảm bảo bắt trọn luồng hình ảnh từ mọi thiết bị.
+    - **Cơ chế thu hình 3 lớp dự phòng (`_getUserMediaWithFallback`):** Ưu tiên `video: {'facingMode': 'user'}` -> fallback sang `video: true` -> fallback sang `video: false` nếu phần cứng lỗi, bảo đảm không bao giờ văng ngoại lệ.
+    - **Xin quyền Camera & Mic thời gian thực (`requestCallPermissions`):** Tích hợp qua `MainActivity.kt` bằng `ActivityCompat.requestPermissions`, tự động kích hoạt popup quyền hệ thống Android trước khi khởi tạo WebRTC.
+    - **Truyền đầy đủ Offer SDP:** Đồng bộ `offer` qua cả `CallManager` và `ChatScreen`.
+    - **Hàng đợi ứng viên mạng (`_pendingCandidates`):** Lưu trữ tạm thời các ứng viên ICE và xả sạch ngay khi `setRemoteDescription` thông tuyến.
   - **Giao diện Cuộc gọi Video 2 chiều hoàn chỉnh:**
     - Khung toàn màn hình: Hiển thị trực tiếp luồng video của đối phương bằng `RTCVideoView(remoteRenderer, objectFit: RTCVideoViewObjectFitCover)`. Nếu đối phương chưa bật camera hoặc chưa kết nối xong, hiển thị avatar dạng sóng âm lan toả kèm trạng thái chờ.
     - Cửa sổ nhỏ góc trên (Picture-in-Picture - PIP): Hiển thị camera của bản thân bằng `RTCVideoView(localRenderer, mirror: true)`.

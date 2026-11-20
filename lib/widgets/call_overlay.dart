@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../data/chat_service.dart';
@@ -95,13 +96,7 @@ class _CallOverlayState extends State<CallOverlay>
       if (mounted) setState(() {});
     };
 
-    if (widget.isIncoming && !_connected) {
-      unawaited(CallManager.instance.startRingtone());
-    }
-
-    if (!widget.isIncoming) {
-      unawaited(_setupWebRtcCaller());
-    }
+    unawaited(_initCall());
 
     _callEventsSub = ChatService.instance.callEvents.listen((event) {
       if (!mounted) return;
@@ -141,6 +136,27 @@ class _CallOverlayState extends State<CallOverlay>
         _hangup();
       }
     });
+  }
+
+  Future<void> _initCall() async {
+    // 1. Yêu cầu quyền Camera & Micro trên Android
+    try {
+      const platform = MethodChannel('com.example.flutter_app_ptk/app_control');
+      await platform.invokeMethod('requestCallPermissions');
+    } catch (_) {}
+
+    // 2. Khởi tạo renderers WebRTC
+    await WebRtcService.instance.initRenderers();
+
+    // 3. Nếu là cuộc gọi đến: đổ chuông
+    if (widget.isIncoming && !_connected) {
+      unawaited(CallManager.instance.startRingtone());
+    }
+
+    // 4. Nếu là người gọi: thiết lập WebRTC caller ngay
+    if (!widget.isIncoming) {
+      await _setupWebRtcCaller();
+    }
   }
 
   Future<void> _setupWebRtcCaller() async {
@@ -235,7 +251,7 @@ class _CallOverlayState extends State<CallOverlay>
 
   @override
   Widget build(BuildContext context) {
-    final isVideoMode = widget.isVideo && _connected;
+    final isVideoMode = widget.isVideo && (_connected || !widget.isIncoming);
 
     return Material(
       color: Colors.transparent,
@@ -333,8 +349,8 @@ class _CallOverlayState extends State<CallOverlay>
 
                 const Spacer(),
 
-                // Avatar với hiệu ứng sóng âm (Pulse Ring) nếu là gọi thoại hoặc đang chờ kết nối
-                if (!widget.isVideo || !_connected)
+                // Avatar với hiệu ứng sóng âm (Pulse Ring) nếu là gọi thoại
+                if (!widget.isVideo)
                   AnimatedBuilder(
                     animation: _pulseAnimation,
                     builder: (context, child) {

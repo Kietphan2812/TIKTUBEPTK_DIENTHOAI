@@ -93,7 +93,8 @@ class _ChatScreenState extends State<ChatScreen> {
         final caller = data['caller'] as Map<String, dynamic>? ?? {};
         final callerId = caller['id']?.toString() ?? '';
         final callerName = caller['name']?.toString() ?? 'Bạn bè';
-        final isVideo = data['isVideo'] as bool? ?? false;
+        final isVideo = (data['isVideo'] == true) || (data['type'] == 'video');
+        final offer = data['offer'] is Map ? Map<String, dynamic>.from(data['offer'] as Map) : null;
 
         final friend = _chatService.friends.firstWhere(
           (f) => f.id == callerId,
@@ -111,6 +112,7 @@ class _ChatScreenState extends State<ChatScreen> {
           friend: friend,
           isVideo: isVideo,
           isIncoming: true,
+          offer: offer,
         );
       }
     });

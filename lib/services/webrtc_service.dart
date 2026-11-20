@@ -20,6 +20,9 @@ class WebRtcService {
   bool isLocalVideoReady = false;
   bool isRemoteVideoReady = false;
 
+  /// Hàng đợi ứng viên ICE Candidate nếu đến trước khi setRemoteDescription
+  final List<RTCIceCandidate> _pendingCandidates = [];
+
   /// Callback khi có thay đổi trạng thái luồng video/âm thanh
   VoidCallback? onStreamUpdate;
 
@@ -47,21 +50,53 @@ class WebRtcService {
     }
   }
 
-  Map<String, dynamic> _getMediaConstraints({required bool isVideo}) {
-    return <String, dynamic>{
-      'audio': true,
-      'video': isVideo
-          ? <String, dynamic>{
-              'mandatory': <String, dynamic>{
-                'minWidth': '640',
-                'minHeight': '480',
-                'minFrameRate': '30',
-              },
-              'facingMode': 'user',
-              'optional': <dynamic>[],
-            }
-          : false,
-    };
+  /// Thu thập luồng camera & microphone với cơ chế dự phòng 3 lớp
+  Future<MediaStream?> _getUserMediaWithFallback({required bool isVideo}) async {
+    if (!isVideo) {
+      return await navigator.mediaDevices.getUserMedia(<String, dynamic>{
+        'audio': true,
+        'video': false,
+      });
+    }
+
+    // Lớp 1: Thử camera trước với facingMode chuẩn
+    try {
+      final stream = await navigator.mediaDevices.getUserMedia(<String, dynamic>{
+        'audio': true,
+        'video': <String, dynamic>{
+          'facingMode': 'user',
+        },
+      });
+      if (stream.getVideoTracks().isNotEmpty) {
+        return stream;
+      }
+    } catch (e) {
+      debugPrint('[WebRTC] getUserMedia facingMode user không thành công: $e');
+    }
+
+    // Lớp 2: Thử video: true cơ bản
+    try {
+      final stream = await navigator.mediaDevices.getUserMedia(<String, dynamic>{
+        'audio': true,
+        'video': true,
+      });
+      if (stream.getVideoTracks().isNotEmpty) {
+        return stream;
+      }
+    } catch (e) {
+      debugPrint('[WebRTC] getUserMedia video:true không thành công: $e');
+    }
+
+    // Lớp 3: Dự phòng chỉ audio nếu camera bị lỗi phần cứng
+    try {
+      return await navigator.mediaDevices.getUserMedia(<String, dynamic>{
+        'audio': true,
+        'video': false,
+      });
+    } catch (e) {
+      debugPrint('[WebRTC] getUserMedia audio:true thất bại: $e');
+      return null;
+    }
   }
 
   /// Khởi tạo cuộc gọi từ phía người gọi (Caller): Mở mic & camera, tạo SDP Offer kèm Google STUN
@@ -73,25 +108,31 @@ class WebRtcService {
       _peerConnection = await createPeerConnection(_iceServers);
 
       // Thu luồng micro và camera thực tế từ thiết bị
-      final constraints = _getMediaConstraints(isVideo: isVideo);
-      _localStream = await navigator.mediaDevices.getUserMedia(constraints);
-      localRenderer.srcObject = _localStream;
-      isLocalVideoReady = isVideo && _localStream!.getVideoTracks().isNotEmpty;
-      onStreamUpdate?.call();
+      _localStream = await _getUserMediaWithFallback(isVideo: isVideo);
+      if (_localStream != null) {
+        localRenderer.srcObject = _localStream;
+        isLocalVideoReady = isVideo && _localStream!.getVideoTracks().isNotEmpty;
+        onStreamUpdate?.call();
 
-      for (final track in _localStream!.getTracks()) {
-        await _peerConnection!.addTrack(track, _localStream!);
+        for (final track in _localStream!.getTracks()) {
+          await _peerConnection!.addTrack(track, _localStream!);
+        }
       }
 
       // Nhận luồng âm thanh và video từ đối phương
-      _peerConnection!.onTrack = (RTCTrackEvent event) {
+      _peerConnection!.onTrack = (RTCTrackEvent event) async {
         debugPrint('[WebRTC] Nhận track: kind=${event.track.kind}, streams=${event.streams.length}');
         if (event.streams.isNotEmpty) {
           _remoteStream = event.streams[0];
-          remoteRenderer.srcObject = _remoteStream;
-          isRemoteVideoReady = _remoteStream!.getVideoTracks().isNotEmpty;
-          onStreamUpdate?.call();
+        } else {
+          _remoteStream ??= await createLocalMediaStream('remote_stream');
+          _remoteStream!.addTrack(event.track);
         }
+        remoteRenderer.srcObject = _remoteStream;
+        if (event.track.kind == 'video' || _remoteStream!.getVideoTracks().isNotEmpty) {
+          isRemoteVideoReady = true;
+        }
+        onStreamUpdate?.call();
       };
 
       _peerConnection!.onAddStream = (MediaStream stream) {
@@ -160,25 +201,31 @@ class WebRtcService {
       _peerConnection = await createPeerConnection(_iceServers);
 
       // Mở micro & camera của máy người nhận
-      final constraints = _getMediaConstraints(isVideo: isVideo);
-      _localStream = await navigator.mediaDevices.getUserMedia(constraints);
-      localRenderer.srcObject = _localStream;
-      isLocalVideoReady = isVideo && _localStream!.getVideoTracks().isNotEmpty;
-      onStreamUpdate?.call();
+      _localStream = await _getUserMediaWithFallback(isVideo: isVideo);
+      if (_localStream != null) {
+        localRenderer.srcObject = _localStream;
+        isLocalVideoReady = isVideo && _localStream!.getVideoTracks().isNotEmpty;
+        onStreamUpdate?.call();
 
-      for (final track in _localStream!.getTracks()) {
-        await _peerConnection!.addTrack(track, _localStream!);
+        for (final track in _localStream!.getTracks()) {
+          await _peerConnection!.addTrack(track, _localStream!);
+        }
       }
 
       // Nhận luồng âm thanh và video từ máy người gọi
-      _peerConnection!.onTrack = (RTCTrackEvent event) {
+      _peerConnection!.onTrack = (RTCTrackEvent event) async {
         debugPrint('[WebRTC] Nhận track: kind=${event.track.kind}, streams=${event.streams.length}');
         if (event.streams.isNotEmpty) {
           _remoteStream = event.streams[0];
-          remoteRenderer.srcObject = _remoteStream;
-          isRemoteVideoReady = _remoteStream!.getVideoTracks().isNotEmpty;
-          onStreamUpdate?.call();
+        } else {
+          _remoteStream ??= await createLocalMediaStream('remote_stream');
+          _remoteStream!.addTrack(event.track);
         }
+        remoteRenderer.srcObject = _remoteStream;
+        if (event.track.kind == 'video' || _remoteStream!.getVideoTracks().isNotEmpty) {
+          isRemoteVideoReady = true;
+        }
+        onStreamUpdate?.call();
       };
 
       _peerConnection!.onAddStream = (MediaStream stream) {
@@ -213,6 +260,13 @@ class WebRtcService {
         await _peerConnection!.setRemoteDescription(
           RTCSessionDescription(sdp, type),
         );
+        // Xả hàng đợi ICE candidates
+        for (final candidate in _pendingCandidates) {
+          try {
+            await _peerConnection!.addCandidate(candidate);
+          } catch (_) {}
+        }
+        _pendingCandidates.clear();
       }
 
       final answer = await _peerConnection!.createAnswer({
@@ -253,6 +307,14 @@ class WebRtcService {
           RTCSessionDescription(sdp, type),
         );
         debugPrint('[WebRTC] Đã thiết lập thông tuyến Remote Answer thành công!');
+
+        // Xả hàng đợi ICE candidates nếu có
+        for (final candidate in _pendingCandidates) {
+          try {
+            await _peerConnection!.addCandidate(candidate);
+          } catch (_) {}
+        }
+        _pendingCandidates.clear();
       }
     } catch (e) {
       debugPrint('[WebRTC] Lỗi setRemoteAnswer: $e');
@@ -262,7 +324,6 @@ class WebRtcService {
   /// Thêm ứng viên ICE Candidate từ đối phương
   Future<void> addCandidate(Map<String, dynamic> candidateMap) async {
     try {
-      if (_peerConnection == null) return;
       final candidateStr = candidateMap['candidate']?.toString();
       final sdpMid = candidateMap['sdpMid']?.toString();
       final rawIndex = candidateMap['sdpMLineIndex'];
@@ -271,9 +332,17 @@ class WebRtcService {
           : int.tryParse(rawIndex?.toString() ?? '0') ?? 0;
 
       if (candidateStr != null && candidateStr.isNotEmpty) {
-        await _peerConnection!.addCandidate(
-          RTCIceCandidate(candidateStr, sdpMid, sdpMLineIndex),
-        );
+        final rtcCandidate = RTCIceCandidate(candidateStr, sdpMid, sdpMLineIndex);
+        if (_peerConnection == null) {
+          _pendingCandidates.add(rtcCandidate);
+          return;
+        }
+        final remoteDesc = await _peerConnection!.getRemoteDescription();
+        if (remoteDesc == null) {
+          _pendingCandidates.add(rtcCandidate);
+        } else {
+          await _peerConnection!.addCandidate(rtcCandidate);
+        }
       }
     } catch (e) {
       debugPrint('[WebRTC] Lỗi addCandidate: $e');
@@ -338,6 +407,7 @@ class WebRtcService {
   Future<void> disposeCall() async {
     try {
       onIceCandidateGenerated = null;
+      _pendingCandidates.clear();
       isLocalVideoReady = false;
       isRemoteVideoReady = false;
 
